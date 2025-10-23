@@ -11,7 +11,8 @@ const {
   TeachingFacultyManager,
   TeachingFacultyScheduleManager,
   NonTeachingFacultyManager,
-  CurriculumManager
+  CurriculumManager,
+  NonTeachingScheduleManager
 } = require('./main');
 const CORExcelExtractor = require('./cor_excel_extractor');
 
@@ -30,6 +31,7 @@ class SchoolInformationSystem {
     this.teachingFacultyExcelFolder = path.join(this.basePath, 'teaching_faculty_excel');
     this.teachingFacultySchedExcelFolder = path.join(this.basePath, 'teaching_faculty_sched_excel');
     this.nonTeachingFacultyExcelFolder = path.join(this.basePath, 'non_teaching_faculty_excel');
+    this.nonTeachingScheduleExcelFolder = path.join(this.basePath, 'non_teaching_schedules_excel');
     this.curriculumExcelFolder = path.join(this.basePath, 'curriculum_excel');
     this.processedFolder = path.join(this.basePath, 'processed');
     
@@ -40,6 +42,7 @@ class SchoolInformationSystem {
     this.teachingFacultyManager = null;
     this.teachingFacultyScheduleManager = null;
     this.nonTeachingFacultyManager = null;
+    this.nonTeachingScheduleManager = null;
     this.curriculumManager = null;
     this.queryAssistant = null;
     
@@ -58,6 +61,7 @@ class SchoolInformationSystem {
     console.log(`   Teaching Faculty Excel: ${this.teachingFacultyExcelFolder}`);
     console.log(`   Teaching Faculty Schedule: ${this.teachingFacultySchedExcelFolder}`);
     console.log(`   Non-Teaching Faculty: ${this.nonTeachingFacultyExcelFolder}`);
+    console.log(`   Non-Teaching Schedules: ${this.nonTeachingScheduleExcelFolder}`)
     console.log(`   Curriculum Excel: ${this.curriculumExcelFolder}`);
     console.log(`   Processed Files: ${this.processedFolder}`);
   }
@@ -456,6 +460,64 @@ class SchoolInformationSystem {
     }
 
     // ============================================================
+    // STEP 8: Process Non-Teaching Faculty Schedule Excel Files
+    // ============================================================
+    try {
+      await fs.access(this.nonTeachingScheduleExcelFolder);
+      const scheduleFiles = await fs.readdir(this.nonTeachingScheduleExcelFolder);
+      const scheduleExcelFiles = scheduleFiles.filter(file => 
+        file.endsWith('.xlsx') || file.endsWith('.xls')
+      );
+
+      if (scheduleExcelFiles.length > 0) {
+        console.log(`\n📅 Found ${scheduleExcelFiles.length} Non-Teaching Schedule Excel file(s)`);
+        
+        const NonTeachingScheduleExtractor = require('./non_teaching_schedule_extractor');
+        const scheduleExtractor = new NonTeachingScheduleExtractor();
+        
+        let scheduleProcessed = 0;
+        let scheduleSkipped = 0;
+        
+        for (const file of scheduleExcelFiles) {
+          const filePath = path.join(this.nonTeachingScheduleExcelFolder, file);
+          console.log(`   Processing: ${file}`);
+          
+          try {
+            const scheduleData = await scheduleExtractor.processNonTeachingScheduleExcel(filePath);
+            
+            if (scheduleData) {
+              const result = await this.nonTeachingScheduleManager.storeNonTeachingSchedule(scheduleData);
+              
+              if (result) {
+                totalProcessed++;
+                scheduleProcessed++;
+                console.log(`   ✅ ${file}`);
+              } else {
+                scheduleSkipped++;
+                console.log(`   ❌ ${file} - Failed to store`);
+              }
+            } else {
+              scheduleSkipped++;
+              console.log(`   ❌ ${file} - Could not extract data`);
+            }
+          } catch (error) {
+            scheduleSkipped++;
+            console.error(`   ❌ ${file} - Error: ${error.message}`);
+          }
+        }
+        
+        if (scheduleSkipped > 0) {
+          console.log(`\n   ℹ️  Summary: ${scheduleProcessed} processed, ${scheduleSkipped} skipped`);
+        }
+      } else {
+        console.log('\n📅 No non-teaching schedule Excel files found');
+      }
+    } catch (err) {
+      console.log('\n📅 Non-teaching schedule Excel folder not found, creating...');
+      await fs.mkdir(this.nonTeachingScheduleExcelFolder, { recursive: true });
+    }
+
+    // ============================================================
     // SUMMARY
     // ============================================================
     console.log('\n' + '='.repeat(60));
@@ -489,7 +551,10 @@ class SchoolInformationSystem {
     
     // Clear non-teaching faculty
     await this.nonTeachingFacultyManager.clearAllNonTeachingFaculty();
-
+    
+    // Clear non-teaching schedules
+    await this.nonTeachingScheduleManager.clearAllNonTeachingSchedules();
+    
     // Clear curricula
     await this.curriculumManager.clearAllCurricula();
     
@@ -574,21 +639,66 @@ async clearAllCORSchedules() {
 
   async clearAllData() {
   try {
-    const confirm = await this.prompt('⚠️  Clear ALL student data AND COR schedules from MongoDB? (yes/no): ');
+    const confirm = await this.prompt('⚠️  Clear ALL data (students, COR schedules, curricula, faculty schedules) from MongoDB? (yes/no): ');
     
     if (confirm.trim().toLowerCase() === 'yes') {
+      console.log('\n🗑️  Clearing all data...\n');
+      
+      // Check if manager exists
+      if (!this.nonTeachingScheduleManager) {
+        console.log('⚠️  Non-teaching schedule manager not initialized!');
+        return;
+      }
+      
       // Clear student data
+      console.log('📋 Clearing student data...');
       await this.db.clearAllData();
       
       // Clear COR schedules
+      console.log('📅 Clearing COR schedules...');
       await this.clearAllCORSchedules();
       
-      console.log('✅ All data cleared from MongoDB');
+      // Clear student grades
+      if (this.studentGradesManager) {
+        console.log('📊 Clearing student grades...');
+        await this.studentGradesManager.clearAllGrades();
+      }
+      
+      // Clear teaching faculty
+      if (this.teachingFacultyManager) {
+        console.log('👨‍🏫 Clearing teaching faculty...');
+        await this.teachingFacultyManager.clearAllTeachingFaculty();
+      }
+      
+      // Clear teaching faculty schedules
+      if (this.teachingFacultyScheduleManager) {
+        console.log('📅 Clearing teaching faculty schedules...');
+        await this.teachingFacultyScheduleManager.clearAllTeachingFacultySchedules();
+      }
+      
+      // Clear non-teaching faculty
+      if (this.nonTeachingFacultyManager) {
+        console.log('👨‍💼 Clearing non-teaching faculty...');
+        await this.nonTeachingFacultyManager.clearAllNonTeachingFaculty();
+      }
+      
+      // Clear non-teaching schedules
+      console.log('📅 Clearing non-teaching schedules...');
+      await this.nonTeachingScheduleManager.clearAllNonTeachingSchedules();
+      
+      // Clear curricula
+      if (this.curriculumManager) {
+        console.log('📚 Clearing curricula...');
+        await this.curriculumManager.clearAllCurricula();
+      }
+      
+      console.log('\n✅ All data cleared from MongoDB');
     } else {
       console.log('❌ Operation cancelled');
     }
   } catch (error) {
     console.error(`❌ Error clearing data: ${error.message}`);
+    console.error(error.stack);
   }
 }
 
@@ -1799,6 +1909,96 @@ async viewTeachingFacultySchedules() {
   console.log(`✅ Fixed ${fixedCount} schedule(s)!`);
 }
 
+async viewNonTeachingSchedules() {
+  console.log('\n' + '='.repeat(60));
+  console.log('📅 NON-TEACHING FACULTY SCHEDULES');
+  console.log('='.repeat(60));
+
+  try {
+    const allSchedules = await this.nonTeachingScheduleManager.getAllNonTeachingSchedules();
+
+    if (allSchedules.length === 0) {
+      console.log('\nNo non-teaching faculty schedules found in the database.');
+      return;
+    }
+
+    console.log(`\nTotal: ${allSchedules.length} non-teaching schedule(s)\n`);
+
+    const byDepartment = {};
+    allSchedules.forEach(schedule => {
+      const dept = schedule.department || 'UNKNOWN';
+      if (!byDepartment[dept]) byDepartment[dept] = [];
+      byDepartment[dept].push(schedule);
+    });
+
+    for (const [dept, schedules] of Object.entries(byDepartment).sort()) {
+      console.log(`\n📂 ${dept} (${schedules.length} schedule(s)):`);
+      console.log('-'.repeat(60));
+
+      schedules.forEach((schedule, index) => {
+        console.log(`\n  ${index + 1}. ${schedule.staff_name}`);
+        console.log(`     Position: ${schedule.position || 'N/A'}`);
+        console.log(`     Department: ${schedule.department}`);
+        console.log(`     Total Shifts: ${schedule.total_shifts}`);
+        console.log(`     Days Working: ${schedule.days_working}`);
+        console.log(`     Schedule ID: ${schedule.schedule_id}`);
+        
+        if (schedule.schedule_by_day) {
+          const days = Object.keys(schedule.schedule_by_day);
+          if (days.length > 0) {
+            console.log(`     Working Days: ${days.join(', ')}`);
+          }
+        }
+      });
+    }
+
+    const stats = await this.nonTeachingScheduleManager.getNonTeachingScheduleStatistics();
+    if (stats) {
+      console.log('\n' + '='.repeat(60));
+      console.log('📊 STATISTICS:');
+      console.log(`   Total Schedules: ${stats.total_schedules}`);
+      console.log(`   Total Staff: ${stats.total_staff}`);
+      console.log(`   Total Shifts: ${stats.total_shifts_all}`);
+      
+      if (Object.keys(stats.by_day).length > 0) {
+        console.log('\n   Staff per day:');
+        Object.entries(stats.by_day).sort().forEach(([day, count]) => {
+          console.log(`     ${day}: ${count} staff`);
+        });
+      }
+    }
+  } catch (error) {
+    console.error(`❌ Error viewing non-teaching schedules: ${error.message}`);
+  }
+}
+
+async debugCollections() {
+  console.log('\n🔍 DEBUG: Listing ALL collections in database\n');
+  try {
+    const database = this.db.db || this.db.client.db();
+    const collections = await database.listCollections().toArray();
+    
+    console.log(`Total collections: ${collections.length}\n`);
+    
+    collections.forEach((col, index) => {
+      console.log(`${index + 1}. ${col.name}`);
+    });
+    
+    console.log('\n📅 Non-teaching schedule collections:');
+    const scheduleCollections = collections.filter(c => c.name.startsWith('non_teaching_schedule_'));
+    
+    if (scheduleCollections.length === 0) {
+      console.log('   ❌ NONE FOUND!');
+    } else {
+      scheduleCollections.forEach(col => {
+        console.log(`   ✅ ${col.name}`);
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error:', error.message);
+  }
+}
 
   async mainMenu() {
   while (true) {
@@ -1817,13 +2017,14 @@ async viewTeachingFacultySchedules() {
     console.log('10. View Teaching Faculty Schedules');
     console.log('11. View Non-Teaching Faculty');
     console.log('12. View Curricula');
-    console.log('13. Debug Curriculum File');  // ← ADD THIS
-    console.log('14. Clear All Data (Manual)');
-    console.log('15. Cleanup Orphaned Collections');
-    console.log('16. Query Assistant');
-    console.log('17. Exit');
+    console.log('13. Debug Curriculum File');
+    console.log('14. View Non-Teaching Schedules'); 
+    console.log('15. Clear All Data (Manual)');
+    console.log('16. Cleanup Orphaned Collections');
+    console.log('17. Query Assistant');
+    console.log('18. Exit'); 
 
-    const choice = (await this.prompt('\nSelect option (1-17): ')).trim();
+    const choice = (await this.prompt('\nSelect option (1-18): ')).trim(); 
 
     try {
       if (choice === '1') {
@@ -1852,18 +2053,22 @@ async viewTeachingFacultySchedules() {
         await this.viewCurricula();  
       } else if (choice === '13') {
         await this.debugCurriculumFile();  
-      } 
-      else if (choice === '14') {
+      }  else if (choice === '14') {
+        await this.viewNonTeachingSchedules();
+      }
+      else if (choice === '15') {
         await this.clearAllData();
-      } else if (choice === '15') {
-        await this.cleanupOrphanedCollections();
       } else if (choice === '16') {
-        await this.runQueryAssistant();
+        await this.cleanupOrphanedCollections();
       } else if (choice === '17') {
+        await this.runQueryAssistant();
+      } else if (choice === '18') {
         console.log('\n👋 Exiting...');
         break;
-      } else {
-        console.log('\n❌ Invalid option. Please select 1-16');
+      } else if (choice === '19') {
+        await this.debugCollections();}
+        else {
+        console.log('\n❌ Invalid option. Please select 1-18');
       }
 
       if (choice !== '16') {
@@ -1964,7 +2169,8 @@ async viewTeachingFacultySchedules() {
     this.teachingFacultyManager = new TeachingFacultyManager(this.db);
     this.teachingFacultyScheduleManager = new TeachingFacultyScheduleManager(this.db);
     this.nonTeachingFacultyManager = new NonTeachingFacultyManager(this.db);
-    this.curriculumManager = new CurriculumManager(this.db);  // ← ADD THIS
+    this.nonTeachingScheduleManager = new NonTeachingScheduleManager(this.db);
+    this.curriculumManager = new CurriculumManager(this.db);  
     this.queryAssistant = new QueryAssistant(this.db, this.corManager, this.gradesManager);
 
     // AUTO-SCAN: Process all files on startup
