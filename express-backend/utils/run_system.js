@@ -12,7 +12,9 @@ const {
   TeachingFacultyScheduleManager,
   NonTeachingFacultyManager,
   CurriculumManager,
-  NonTeachingScheduleManager
+  NonTeachingScheduleManager,
+  AdminManager,
+  GeneralInfoManager
 } = require('./main');
 const CORExcelExtractor = require('./cor_excel_extractor');
 
@@ -32,6 +34,8 @@ class SchoolInformationSystem {
     this.teachingFacultySchedExcelFolder = path.join(this.basePath, 'teaching_faculty_sched_excel');
     this.nonTeachingFacultyExcelFolder = path.join(this.basePath, 'non_teaching_faculty_excel');
     this.nonTeachingScheduleExcelFolder = path.join(this.basePath, 'non_teaching_schedules_excel');
+    this.adminExcelFolder = path.join(this.basePath, 'admin_excel'); 
+    this.generalInfoFolder = path.join(this.basePath, 'general_info');
     this.curriculumExcelFolder = path.join(this.basePath, 'curriculum_excel');
     this.processedFolder = path.join(this.basePath, 'processed');
     
@@ -43,6 +47,8 @@ class SchoolInformationSystem {
     this.teachingFacultyScheduleManager = null;
     this.nonTeachingFacultyManager = null;
     this.nonTeachingScheduleManager = null;
+    this.adminManager = null;
+    this.generalInfoManager = null;
     this.curriculumManager = null;
     this.queryAssistant = null;
     
@@ -61,7 +67,9 @@ class SchoolInformationSystem {
     console.log(`   Teaching Faculty Excel: ${this.teachingFacultyExcelFolder}`);
     console.log(`   Teaching Faculty Schedule: ${this.teachingFacultySchedExcelFolder}`);
     console.log(`   Non-Teaching Faculty: ${this.nonTeachingFacultyExcelFolder}`);
-    console.log(`   Non-Teaching Schedules: ${this.nonTeachingScheduleExcelFolder}`)
+    console.log(`   Non-Teaching Schedules: ${this.nonTeachingScheduleExcelFolder}`);
+    console.log(`   Admin Excel: ${this.adminExcelFolder}`); 
+    console.log(`   General Info PDFs: ${this.generalInfoFolder}`);
     console.log(`   Curriculum Excel: ${this.curriculumExcelFolder}`);
     console.log(`   Processed Files: ${this.processedFolder}`);
   }
@@ -518,6 +526,122 @@ class SchoolInformationSystem {
     }
 
     // ============================================================
+    // STEP 9: Process Admin Excel Files
+    // ============================================================
+    try {
+      await fs.access(this.adminExcelFolder);
+      const adminFiles = await fs.readdir(this.adminExcelFolder);
+      const adminExcelFiles = adminFiles.filter(file => 
+        file.endsWith('.xlsx') || file.endsWith('.xls')
+      );
+
+      if (adminExcelFiles.length > 0) {
+        console.log(`\n👔 Found ${adminExcelFiles.length} Admin Excel file(s)`);
+        
+        const AdminExtractor = require('./admin_extractor');
+        const adminExtractor = new AdminExtractor();
+        
+        let adminProcessed = 0;
+        let adminSkipped = 0;
+        
+        for (const file of adminExcelFiles) {
+          const filePath = path.join(this.adminExcelFolder, file);
+          console.log(`   Processing: ${file}`);
+          
+          try {
+            const adminData = await adminExtractor.processAdminExcel(filePath);
+            
+            if (adminData) {
+              const result = await this.adminManager.storeAdmin(adminData);
+              
+              if (result) {
+                totalProcessed++;
+                adminProcessed++;
+                console.log(`   ✅ ${file}`);
+              } else {
+                adminSkipped++;
+                console.log(`   ❌ ${file} - Failed to store`);
+              }
+            } else {
+              adminSkipped++;
+              console.log(`   ❌ ${file} - Could not extract data`);
+            }
+          } catch (error) {
+            adminSkipped++;
+            console.error(`   ❌ ${file} - Error: ${error.message}`);
+          }
+        }
+        
+        if (adminSkipped > 0) {
+          console.log(`\n   ℹ️  Summary: ${adminProcessed} processed, ${adminSkipped} skipped`);
+        }
+      } else {
+        console.log('\n👔 No admin Excel files found');
+      }
+    } catch (err) {
+      console.log('\n👔 Admin Excel folder not found, creating...');
+      await fs.mkdir(this.adminExcelFolder, { recursive: true });
+    }
+
+    // ============================================================
+    // STEP 10: Process General Info PDF Files
+    // ============================================================
+    try {
+      await fs.access(this.generalInfoFolder);
+      const generalInfoFiles = await fs.readdir(this.generalInfoFolder);
+      const pdfFiles = generalInfoFiles.filter(file => 
+        file.toLowerCase().endsWith('.pdf')
+      );
+
+      if (pdfFiles.length > 0) {
+        console.log(`\n📄 Found ${pdfFiles.length} General Info PDF file(s)`);
+        
+        const GeneralInfoExtractor = require('./general_info_extractor');
+        const generalExtractor = new GeneralInfoExtractor();
+        
+        let generalProcessed = 0;
+        let generalSkipped = 0;
+        
+        for (const file of pdfFiles) {
+          const filePath = path.join(this.generalInfoFolder, file);
+          console.log(`   Processing: ${file}`);
+          
+          try {
+            const generalData = await generalExtractor.processGeneralInfoPDF(filePath);
+            
+            if (generalData) {
+              const result = await this.generalInfoManager.storeGeneralInfo(generalData);
+              
+              if (result) {
+                totalProcessed++;
+                generalProcessed++;
+                console.log(`   ✅ ${file}`);
+              } else {
+                generalSkipped++;
+                console.log(`   ❌ ${file} - Failed to store`);
+              }
+            } else {
+              generalSkipped++;
+              console.log(`   ❌ ${file} - Could not extract data`);
+            }
+          } catch (error) {
+            generalSkipped++;
+            console.error(`   ❌ ${file} - Error: ${error.message}`);
+          }
+        }
+        
+        if (generalSkipped > 0) {
+          console.log(`\n   ℹ️  Summary: ${generalProcessed} processed, ${generalSkipped} skipped`);
+        }
+      } else {
+        console.log('\n📄 No general info PDF files found');
+      }
+    } catch (err) {
+      console.log('\n📄 General Info folder not found, creating...');
+      await fs.mkdir(this.generalInfoFolder, { recursive: true });
+    }
+
+    // ============================================================
     // SUMMARY
     // ============================================================
     console.log('\n' + '='.repeat(60));
@@ -555,6 +679,12 @@ class SchoolInformationSystem {
     // Clear non-teaching schedules
     await this.nonTeachingScheduleManager.clearAllNonTeachingSchedules();
     
+    // Clear admin resumes
+    await this.adminManager.clearAllAdmins();
+
+    // Clear general info
+    await this.generalInfoManager.clearAllGeneralInfo();
+
     // Clear curricula
     await this.curriculumManager.clearAllCurricula();
     
@@ -685,6 +815,14 @@ async clearAllCORSchedules() {
       // Clear non-teaching schedules
       console.log('📅 Clearing non-teaching schedules...');
       await this.nonTeachingScheduleManager.clearAllNonTeachingSchedules();
+
+      // Clear admins
+      console.log('👔 Clearing administrators...');
+      await this.adminManager.clearAllAdmins();
+
+      // Clear general info
+      console.log('📄 Clearing general information...');
+      await this.generalInfoManager.clearAllGeneralInfo();
       
       // Clear curricula
       if (this.curriculumManager) {
@@ -2000,6 +2138,173 @@ async debugCollections() {
   }
 }
 
+  async viewAdministrators() {
+  console.log('\n' + '='.repeat(60));
+  console.log('👔 ADMINISTRATIVE STAFF');
+  console.log('='.repeat(60));
+
+  try {
+    const allAdmins = await this.adminManager.getAllAdmins();
+
+    if (allAdmins.length === 0) {
+      console.log('\nNo administrators found in the database.');
+      return;
+    }
+
+    console.log(`\nTotal: ${allAdmins.length} administrator(s)\n`);
+
+    // Group by admin type
+    const byType = {};
+    allAdmins.forEach(admin => {
+      const type = admin.admin_type || 'Unknown';
+      if (!byType[type]) {
+        byType[type] = [];
+      }
+      byType[type].push(admin);
+    });
+
+    // Display grouped by type
+    for (const [type, admins] of Object.entries(byType).sort()) {
+      console.log(`\n📂 ${type} (${admins.length} person(s)):`);
+      console.log('-'.repeat(60));
+
+      admins.forEach((admin, index) => {
+        console.log(`\n  ${index + 1}. ${admin.full_name}`);
+        console.log(`     Position: ${admin.position || 'N/A'}`);
+        console.log(`     Department: ${admin.department}`);
+        console.log(`     Employment Status: ${admin.employment_status || 'N/A'}`);
+        console.log(`     Email: ${admin.email || 'N/A'}`);
+        console.log(`     Phone: ${admin.phone || 'N/A'}`);
+        console.log(`     Admin ID: ${admin.admin_id}`);
+      });
+    }
+
+    // Show statistics
+    const stats = await this.adminManager.getAdminStatistics();
+    if (stats) {
+      console.log('\n' + '='.repeat(60));
+      console.log('📊 STATISTICS:');
+      console.log(`   Total Administrators: ${stats.total_admins}`);
+      
+      if (Object.keys(stats.by_type).length > 0) {
+        console.log('\n   By Type:');
+        Object.entries(stats.by_type).sort().forEach(([type, count]) => {
+          console.log(`     ${type}: ${count}`);
+        });
+      }
+      
+      if (Object.keys(stats.by_employment_status).length > 0) {
+        console.log('\n   By Employment Status:');
+        Object.entries(stats.by_employment_status).sort().forEach(([status, count]) => {
+          console.log(`     ${status}: ${count}`);
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error(`❌ Error viewing administrators: ${error.message}`);
+  }
+}
+
+async viewGeneralInformation() {
+  console.log('\n' + '='.repeat(60));
+  console.log('📄 GENERAL INFORMATION');
+  console.log('='.repeat(60));
+
+  try {
+    const allInfo = await this.generalInfoManager.getAllGeneralInfo();
+
+    if (allInfo.length === 0) {
+      console.log('\nNo general information found in the database.');
+      return;
+    }
+
+    console.log(`\nTotal: ${allInfo.length} document(s)\n`);
+
+    // Display each document
+    for (const info of allInfo) {
+      console.log('='.repeat(60));
+      console.log(`📋 ${info.info_type.toUpperCase().replace(/_/g, ' ')}`);
+      console.log('='.repeat(60));
+      
+      if (info.info_type === 'mission_vision') {
+        if (info.content.vision) {
+          console.log('\n🎯 VISION:');
+          console.log(this.wrapText(info.content.vision, 70));
+        }
+        if (info.content.mission) {
+          console.log('\n🎯 MISSION:');
+          console.log(this.wrapText(info.content.mission, 70));
+        }
+        
+      } else if (info.info_type === 'objectives') {
+        console.log('\n🎯 OBJECTIVES:');
+        info.content.objectives.forEach((obj, index) => {
+          console.log(`\n${index + 1}. ${this.wrapText(obj, 67)}`);
+        });
+        
+      } else if (info.info_type === 'history') {
+        console.log('\n📖 HISTORY:');
+        console.log(this.wrapText(info.content.history, 70));
+        
+      } else if (info.info_type === 'core_values') {
+        console.log('\n💎 CORE VALUES:');
+        info.content.core_values.forEach((value, index) => {
+          console.log(`${index + 1}. ${value}`);
+        });
+        
+      } else if (info.info_type === 'hymn') {
+        console.log('\n🎵 HYMN:');
+        console.log(info.content.hymn);
+      }
+      
+      console.log(`\n📁 Source: ${info.source_file}`);
+      console.log(`📊 Characters: ${info.character_count}`);
+      console.log('');
+    }
+
+    // Show statistics
+    const stats = await this.generalInfoManager.getGeneralInfoStatistics();
+    if (stats) {
+      console.log('='.repeat(60));
+      console.log('📊 STATISTICS:');
+      console.log(`   Total Documents: ${stats.total_documents}`);
+      console.log(`   Total Characters: ${stats.total_characters}`);
+      
+      if (Object.keys(stats.by_type).length > 0) {
+        console.log('\n   By Type:');
+        Object.entries(stats.by_type).sort().forEach(([type, count]) => {
+          console.log(`     ${type.replace(/_/g, ' ')}: ${count}`);
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error(`❌ Error viewing general information: ${error.message}`);
+  }
+}
+
+// Helper function for text wrapping
+wrapText(text, maxWidth) {
+  const words = text.split(' ');
+  const lines = [];
+  let currentLine = '';
+  
+  for (const word of words) {
+    if ((currentLine + word).length <= maxWidth) {
+      currentLine += (currentLine ? ' ' : '') + word;
+    } else {
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  
+  if (currentLine) lines.push(currentLine);
+  
+  return lines.join('\n   ');
+}
+
+
   async mainMenu() {
   while (true) {
     console.log('\n' + '='.repeat(60));
@@ -2018,13 +2323,15 @@ async debugCollections() {
     console.log('11. View Non-Teaching Faculty');
     console.log('12. View Curricula');
     console.log('13. Debug Curriculum File');
-    console.log('14. View Non-Teaching Schedules'); 
-    console.log('15. Clear All Data (Manual)');
-    console.log('16. Cleanup Orphaned Collections');
-    console.log('17. Query Assistant');
-    console.log('18. Exit'); 
+    console.log('14. View Non-Teaching Schedules');
+    console.log('15. View Administrators');
+    console.log('16. View General Information');  
+    console.log('17. Clear All Data (Manual)');
+    console.log('18. Cleanup Orphaned Collections');
+    console.log('19. Query Assistant');
+    console.log('20. Exit');  
 
-    const choice = (await this.prompt('\nSelect option (1-18): ')).trim(); 
+    const choice = (await this.prompt('\nSelect option (1-20): ')).trim();  
 
     try {
       if (choice === '1') {
@@ -2050,28 +2357,29 @@ async debugCollections() {
       } else if (choice === '11') {
         await this.viewNonTeachingFaculty();
       } else if (choice === '12') {
-        await this.viewCurricula();  
+        await this.viewCurricula();
       } else if (choice === '13') {
-        await this.debugCurriculumFile();  
-      }  else if (choice === '14') {
+        await this.debugCurriculumFile();
+      } else if (choice === '14') {
         await this.viewNonTeachingSchedules();
-      }
-      else if (choice === '15') {
-        await this.clearAllData();
+      } else if (choice === '15') {
+        await this.viewAdministrators();
       } else if (choice === '16') {
-        await this.cleanupOrphanedCollections();
+        await this.viewGeneralInformation();  // ← ADD THIS
       } else if (choice === '17') {
-        await this.runQueryAssistant();
+        await this.clearAllData();
       } else if (choice === '18') {
+        await this.cleanupOrphanedCollections();
+      } else if (choice === '19') {
+        await this.runQueryAssistant();
+      } else if (choice === '20') {  // ← UPDATE NUMBER
         console.log('\n👋 Exiting...');
         break;
-      } else if (choice === '19') {
-        await this.debugCollections();}
-        else {
-        console.log('\n❌ Invalid option. Please select 1-18');
+      } else {
+        console.log('\n❌ Invalid option. Please select 1-20');  // ← UPDATE RANGE
       }
 
-      if (choice !== '16') {
+      if (choice !== '19') {
         await this.prompt('\nPress Enter to continue...');
       }
 
@@ -2170,6 +2478,8 @@ async debugCollections() {
     this.teachingFacultyScheduleManager = new TeachingFacultyScheduleManager(this.db);
     this.nonTeachingFacultyManager = new NonTeachingFacultyManager(this.db);
     this.nonTeachingScheduleManager = new NonTeachingScheduleManager(this.db);
+    this.adminManager = new AdminManager(this.db);
+    this.generalInfoManager = new GeneralInfoManager(this.db);
     this.curriculumManager = new CurriculumManager(this.db);  
     this.queryAssistant = new QueryAssistant(this.db, this.corManager, this.gradesManager);
 

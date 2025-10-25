@@ -2263,42 +2263,64 @@ class CurriculumManager {
    * Clear all curricula
    */
   async clearAllCurricula() {
-    try {
-      // Get ALL collections in the database
-      const collections = await this.db.db.listCollections().toArray();
-      
-      let totalCleared = 0;
+  try {
+    console.log('🔍 Searching for curriculum collections...');
+    
+    // Get the actual MongoDB database object
+    const database = this.db.db || this.db.client.db();
+    
+    // Get ALL collections in the database
+    const collections = await database.listCollections().toArray();
+    
+    let totalCleared = 0;
+    let collectionsFound = 0;
 
-      // Find all collections that start with 'curriculum_'
-      for (const collectionInfo of collections) {
-        const collectionName = collectionInfo.name;
+    // Find and clear all collections that start with 'curriculum_'
+    for (const collectionInfo of collections) {
+      const collectionName = collectionInfo.name;
+      
+      // Check if this is a curriculum collection
+      if (collectionName.startsWith('curriculum_')) {
+        collectionsFound++;
+        console.log(`   🔍 Found collection: ${collectionName}`);
         
-        // Check if this is a curriculum collection
-        if (collectionName.startsWith('curriculum_')) {
-          try {
-            const collection = this.db.db.collection(collectionName);
-            const result = await collection.deleteMany({ data_type: 'curriculum' });
+        try {
+          const collection = database.collection(collectionName);
+          
+          // Count documents first
+          const count = await collection.countDocuments();
+          console.log(`      Documents in collection: ${count}`);
+          
+          if (count > 0) {
+            // Delete all documents
+            const result = await collection.deleteMany({});
             
-            if (result.deletedCount > 0) {
-              console.log(`   Cleared ${result.deletedCount} curriculum record(s) from ${collectionName}`);
-              totalCleared += result.deletedCount;
-            }
-          } catch (error) {
-            console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
-            continue;
+            console.log(`   ✅ Cleared ${result.deletedCount} curriculum record(s) from ${collectionName}`);
+            totalCleared += result.deletedCount;
+          } else {
+            console.log(`   ℹ️  ${collectionName} is already empty`);
           }
+          
+        } catch (error) {
+          console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
+          continue;
         }
       }
-
-      if (totalCleared > 0) {
-        console.log(`✅ Total curriculum records cleared: ${totalCleared}`);
-      } else {
-        console.log('ℹ️  No curriculum records to clear');
-      }
-    } catch (error) {
-      console.error(`❌ Error clearing curricula: ${error.message}`);
     }
+
+    if (collectionsFound === 0) {
+      console.log('ℹ️  No curriculum collections found in database');
+    } else if (totalCleared > 0) {
+      console.log(`✅ Total curriculum records cleared: ${totalCleared} from ${collectionsFound} collection(s)`);
+    } else {
+      console.log(`ℹ️  Found ${collectionsFound} collection(s) but they were already empty`);
+    }
+    
+  } catch (error) {
+    console.error(`❌ Error clearing curricula: ${error.message}`);
+    console.error(error.stack);
   }
+}
 }
 
 class NonTeachingScheduleManager {
@@ -2471,6 +2493,484 @@ class NonTeachingScheduleManager {
 }
 }
 
+class AdminManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store admin data in department-specific collection
+   */
+  async storeAdmin(adminData) {
+    try {
+      const dept = (adminData.metadata.department || 'ADMIN').toLowerCase();
+      
+      // Get the admin collection for this department
+      const collection = this.db.db.collection(`admin_${dept}`);
+      
+      const adminDoc = {
+        // Identification
+        admin_id: `ADMIN_${adminData.metadata.surname.replace(/\s+/g, '_').toUpperCase()}_${Date.now()}`,
+        full_name: adminData.metadata.full_name,
+        surname: adminData.metadata.surname,
+        first_name: adminData.metadata.first_name,
+        middle_name: adminData.metadata.middle_name,
+        
+        // Administrative Info
+        department: adminData.metadata.department,
+        position: adminData.metadata.position,
+        admin_type: adminData.metadata.admin_type,
+        employment_status: adminData.metadata.employment_status,
+        
+        // Contact Info
+        email: adminData.metadata.email,
+        phone: adminData.metadata.phone,
+        
+        // Full admin data
+        admin_info: adminData.admin_data,
+        
+        // Formatted text
+        formatted_text: adminData.formatted_text,
+        
+        // Metadata
+        source_file: adminData.metadata.source_file,
+        data_type: 'admin_excel',
+        faculty_type: 'admin',
+        created_at: adminData.metadata.created_at,
+        updated_at: new Date()
+      };
+      
+      // Insert the document
+      const result = await collection.insertOne(adminDoc);
+      
+      console.log(`✅ Admin stored in: admin_${dept}`);
+      console.log(`   Admin ID: ${adminDoc.admin_id}`);
+      console.log(`   Name: ${adminDoc.full_name}`);
+      console.log(`   Type: ${adminDoc.admin_type}`);
+      console.log(`   MongoDB _id: ${result.insertedId}`);
+      
+      return adminDoc.admin_id;
+      
+    } catch (error) {
+      console.error(`❌ Error storing admin: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all admins from all departments
+   */
+  async getAllAdmins() {
+    try {
+      const departments = ['admin', 'school_admin', 'board'];
+      const allAdmins = [];
+
+      for (const dept of departments) {
+        try {
+          const collection = this.db.db.collection(`admin_${dept}`);
+          const admins = await collection.find({ data_type: 'admin_excel' }).toArray();
+          allAdmins.push(...admins);
+        } catch {
+          // Collection might not exist yet
+          continue;
+        }
+      }
+
+      return allAdmins;
+    } catch (error) {
+      console.error(`❌ Error getting all admins: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get admins by department
+   */
+  async getAdminsByDepartment(department) {
+    try {
+      const dept = department.toLowerCase();
+      const collection = this.db.db.collection(`admin_${dept}`);
+      return await collection.find({ data_type: 'admin_excel' }).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting admins: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get admins by type (School Administrator or Board Member)
+   */
+  async getAdminsByType(adminType) {
+    try {
+      const allAdmins = await this.getAllAdmins();
+      return allAdmins.filter(admin => admin.admin_type === adminType);
+    } catch (error) {
+      console.error(`❌ Error getting admins by type: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Search admin by name
+   */
+  async searchAdminByName(name) {
+    try {
+      const allAdmins = await this.getAllAdmins();
+      return allAdmins.filter(admin => 
+        admin.full_name.toLowerCase().includes(name.toLowerCase())
+      );
+    } catch (error) {
+      console.error(`❌ Error searching admin: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get admin statistics
+   */
+  async getAdminStatistics() {
+    try {
+      const allAdmins = await this.getAllAdmins();
+      
+      const stats = {
+        total_admins: allAdmins.length,
+        by_department: {},
+        by_type: {},
+        by_employment_status: {}
+      };
+
+      allAdmins.forEach(admin => {
+        // By department
+        const dept = admin.department || 'UNKNOWN';
+        stats.by_department[dept] = (stats.by_department[dept] || 0) + 1;
+
+        // By type
+        const type = admin.admin_type || 'Unknown';
+        stats.by_type[type] = (stats.by_type[type] || 0) + 1;
+
+        // By employment status
+        const status = admin.employment_status || 'Unknown';
+        stats.by_employment_status[status] = (stats.by_employment_status[status] || 0) + 1;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting admin statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all admins
+   */
+  async clearAllAdmins() {
+    try {
+      console.log('🔍 Searching for admin collections...');
+      
+      // Get the actual MongoDB database object
+      const database = this.db.db || this.db.client.db();
+      
+      // Get ALL collections in the database
+      const collections = await database.listCollections().toArray();
+      
+      let totalCleared = 0;
+      let collectionsFound = 0;
+
+      // Find and clear all collections that start with 'admin_'
+      for (const collectionInfo of collections) {
+        const collectionName = collectionInfo.name;
+        
+        // Check if this is an admin collection
+        if (collectionName.startsWith('admin_')) {
+          collectionsFound++;
+          console.log(`   🔍 Found collection: ${collectionName}`);
+          
+          try {
+            const collection = database.collection(collectionName);
+            
+            // Count documents first
+            const count = await collection.countDocuments();
+            console.log(`      Documents in collection: ${count}`);
+            
+            if (count > 0) {
+              // Delete all documents
+              const result = await collection.deleteMany({});
+              
+              console.log(`   ✅ Cleared ${result.deletedCount} admin(s) from ${collectionName}`);
+              totalCleared += result.deletedCount;
+            } else {
+              console.log(`   ℹ️  ${collectionName} is already empty`);
+            }
+            
+          } catch (error) {
+            console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
+            continue;
+          }
+        }
+      }
+
+      if (collectionsFound === 0) {
+        console.log('ℹ️  No admin collections found in database');
+      } else if (totalCleared > 0) {
+        console.log(`✅ Total admins cleared: ${totalCleared} from ${collectionsFound} collection(s)`);
+      } else {
+        console.log(`ℹ️  Found ${collectionsFound} collection(s) but they were already empty`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error clearing admins: ${error.message}`);
+      console.error(error.stack);
+    }
+  }
+}
+
+class GeneralInfoManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store general info in MongoDB
+   */
+  async storeGeneralInfo(generalInfoData) {
+    try {
+      const infoType = generalInfoData.metadata.info_type;
+      
+      // Use a single collection for all general info
+      const collection = this.db.db.collection('general_info');
+      
+      const infoDoc = {
+        info_id: `INFO_${infoType.toUpperCase()}_${Date.now()}`,
+        info_type: infoType,
+        
+        // Content based on type
+        content: generalInfoData.content,
+        
+        // Raw and formatted text
+        raw_text: generalInfoData.raw_text,
+        formatted_text: generalInfoData.formatted_text,
+        
+        // Metadata
+        source_file: generalInfoData.metadata.source_file,
+        data_type: 'general_info_pdf',
+        character_count: generalInfoData.metadata.character_count,
+        extracted_at: generalInfoData.metadata.extracted_at,
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      
+      // Check if this info type already exists and update or insert
+      const existing = await collection.findOne({ info_type: infoType });
+      
+      if (existing) {
+        // Update existing
+        await collection.updateOne(
+          { info_type: infoType },
+          { $set: infoDoc }
+        );
+        console.log(`✅ Updated ${infoType} in general_info collection`);
+      } else {
+        // Insert new
+        const result = await collection.insertOne(infoDoc);
+        console.log(`✅ Stored ${infoType} in general_info collection`);
+        console.log(`   MongoDB _id: ${result.insertedId}`);
+      }
+      
+      console.log(`   Info ID: ${infoDoc.info_id}`);
+      console.log(`   Type: ${infoType}`);
+      console.log(`   Characters: ${infoDoc.character_count}`);
+      
+      return infoDoc.info_id;
+      
+    } catch (error) {
+      console.error(`❌ Error storing general info: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all general information
+   */
+  async getAllGeneralInfo() {
+    try {
+      const collection = this.db.db.collection('general_info');
+      return await collection.find({}).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting general info: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get general info by type
+   */
+  async getGeneralInfoByType(infoType) {
+    try {
+      const collection = this.db.db.collection('general_info');
+      return await collection.findOne({ info_type: infoType });
+    } catch (error) {
+      console.error(`❌ Error getting general info: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get mission and vision
+   */
+  async getMissionVision() {
+    return await this.getGeneralInfoByType('mission_vision');
+  }
+
+  /**
+   * Get objectives
+   */
+  async getObjectives() {
+    return await this.getGeneralInfoByType('objectives');
+  }
+
+  /**
+   * Get history
+   */
+  async getHistory() {
+    return await this.getGeneralInfoByType('history');
+  }
+
+  /**
+   * Get core values
+   */
+  async getCoreValues() {
+    return await this.getGeneralInfoByType('core_values');
+  }
+
+  /**
+   * Get hymn
+   */
+  async getHymn() {
+    return await this.getGeneralInfoByType('hymn');
+  }
+
+  /**
+   * Search general info
+   */
+  async searchGeneralInfo(searchText) {
+    try {
+      const collection = this.db.db.collection('general_info');
+      return await collection.find({
+        $or: [
+          { raw_text: { $regex: searchText, $options: 'i' } },
+          { info_type: { $regex: searchText, $options: 'i' } }
+        ]
+      }).toArray();
+    } catch (error) {
+      console.error(`❌ Error searching general info: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get general info statistics
+   */
+  async getGeneralInfoStatistics() {
+    try {
+      const allInfo = await this.getAllGeneralInfo();
+      
+      const stats = {
+        total_documents: allInfo.length,
+        by_type: {},
+        total_characters: 0
+      };
+
+      allInfo.forEach(info => {
+        const type = info.info_type || 'unknown';
+        stats.by_type[type] = (stats.by_type[type] || 0) + 1;
+        stats.total_characters += info.character_count || 0;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting general info statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all general info
+   */
+  async clearAllGeneralInfo() {
+    try {
+      console.log('🔍 Clearing general info collection...');
+      
+      const database = this.db.db || this.db.client.db();
+      const collection = database.collection('general_info');
+      
+      const count = await collection.countDocuments();
+      console.log(`   Documents in collection: ${count}`);
+      
+      if (count > 0) {
+        const result = await collection.deleteMany({});
+        console.log(`✅ Cleared ${result.deletedCount} general info document(s)`);
+      } else {
+        console.log(`ℹ️  General info collection is already empty`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error clearing general info: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update specific general info
+   */
+  async updateGeneralInfo(infoType, updates) {
+    try {
+      const collection = this.db.db.collection('general_info');
+      const result = await collection.updateOne(
+        { info_type: infoType },
+        { 
+          $set: {
+            ...updates,
+            updated_at: new Date()
+          }
+        }
+      );
+      
+      if (result.modifiedCount > 0) {
+        console.log(`✅ Updated ${infoType}`);
+        return true;
+      } else {
+        console.log(`⚠️  No document found for ${infoType}`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error updating general info: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Delete specific general info
+   */
+  async deleteGeneralInfo(infoType) {
+    try {
+      const collection = this.db.db.collection('general_info');
+      const result = await collection.deleteOne({ info_type: infoType });
+      
+      if (result.deletedCount > 0) {
+        console.log(`✅ Deleted ${infoType}`);
+        return true;
+      } else {
+        console.log(`⚠️  No document found for ${infoType}`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error deleting general info: ${error.message}`);
+      return false;
+    }
+  }
+}
+
 module.exports = { 
   StudentDatabase, 
   StudentDataExtractor, 
@@ -2481,6 +2981,8 @@ module.exports = {
   NonTeachingFacultyManager, 
   CurriculumManager, 
   NonTeachingScheduleManager,
+  AdminManager,
+  GeneralInfoManager, 
   FieldStatus, 
   MediaDefaults 
 };
