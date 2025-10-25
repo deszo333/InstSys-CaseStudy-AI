@@ -590,6 +590,15 @@ PROMPT_TEMPLATES = {
         Directly answer the user's query by analyzing only the provided Factual Documents.
 
 
+
+
+        --- AMBIGUITY HANDLING ---
+        If the Factual Documents contain a special document with `source_collection: "system_signal"` and `content: "Ambiguity detected"`, your primary goal changes. You MUST IGNORE all other rules. Your ONLY task is to:
+        1.  Analyze the other documents to find the key differences between the people found (e.g., their `course`, `department`, or `role`).
+        2.  Formulate a concise, multiple-choice question for the user to help them clarify which person they are looking for.
+        3.  Your entire response MUST be only this clarifying question. Do NOT provide any other information.
+
+
         
 
         CORE INSTRUCTIONS:
@@ -2957,6 +2966,33 @@ class AIAnalyst:
                 # Replace the original list with the clean, de-duplicated one.
                 collected_docs = deduplicated_list
             # --- ✨ END TEMP FIX ---
+
+
+                # --- ADD THIS NEW BLOCK ---
+            # AMBIGUITY DETECTION LOGIC
+            if len(collected_docs) > 1:
+                # 1. Use spaCy to determine if the user's intent was for a list
+                is_list_intent = False
+                doc = self.nlp(query)
+                for token in doc:
+                    if token.tag_ in ["NNS", "NNPS", "VBP"]: # Plural nouns or verbs
+                        is_list_intent = True
+                        self.debug(f"-> List intent detected via NLP tag '{token.tag_}' on word '{token.text}'.")
+                        break
+                
+                # 2. Check if the results are for multiple distinct people
+                person_names = {doc.get("metadata", {}).get("full_name") for doc in collected_docs if doc.get("metadata", {}).get("full_name")}
+
+                # 3. If it's an ambiguous, singular query, add the signal for the Synthesizer
+                if len(person_names) > 1 and not is_list_intent:
+                    self.debug("-> Ambiguity detected: Multiple people found for a singular query.")
+                    signal_doc = {
+                        "source_collection": "system_signal",
+                        "content": "Ambiguity detected. Multiple distinct people found for a singular query. Your task is to ask a clarifying question.",
+                        "metadata": {}
+                    }
+                    collected_docs.append(signal_doc)
+            # --- END OF NEW BLOCK ---
 
 
 

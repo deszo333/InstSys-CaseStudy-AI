@@ -39,24 +39,38 @@ class MongoCollectionAdapter:
         
         base_url = "http://127.0.0.1:8000" # Your FastAPI server URL
 
+
+        # In database.py, inside MongoCollectionAdapter._format_output
+
+# --- REPLACE THE "THIS IS THE FIX" BLOCK WITH THIS ---
+
         for doc in documents:
-            # --- THIS IS THE FIX ---
-            # Check if a 'content' field already exists.
             content_string = doc.get("content")
             
-            # If it doesn't, create it on the fly from the document's fields.
             if not content_string:
+                # Check the document's type to generate appropriate content
+                data_type = doc.get("data_type")
                 name = doc.get("full_name", "N/A")
                 stud_id = doc.get("student_id", "N/A")
                 course = doc.get("course", "N/A")
                 year = doc.get("year", "N/A")
-                section = doc.get("section", "N/A")
-                department = doc.get("department", "N/A")
-                content_string = (
-                    f"Student profile for {name}. ID: {stud_id}. "
-                    f"Program: {course}, Year: {year}, Section: {section}. "
-                    f"Department: {department}."
-                )
+
+                if data_type == "student_grades":
+                    # Create a unique content string for grade documents
+                    gwa = doc.get("gwa", "N/A")
+                    content_string = (
+                        f"Grade summary for {name} ({stud_id}). "
+                        f"Program: {course}, Year: {year}. GWA: {gwa}."
+                    )
+                else:
+                    # Fallback to the original student profile content string
+                    section = doc.get("section", "N/A")
+                    department = doc.get("department", "N/A")
+                    content_string = (
+                        f"Student profile for {name}. ID: {stud_id}. "
+                        f"Program: {course}, Year: {year}, Section: {section}. "
+                        f"Department: {department}."
+                    )
             
             docs_list.append(content_string)
             # --- END OF FIX ---

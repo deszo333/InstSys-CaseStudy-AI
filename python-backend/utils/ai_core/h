@@ -1,0 +1,11 @@
+{
+  "event_type": "user_recognized",
+  "user_type": "student",
+  "student_id": "PDM-2025-001354"
+}
+
+{
+  "event_type": "user_recognized",
+  "user_type": "faculty",
+  "full_name": "Dr. Arcilla"
+}

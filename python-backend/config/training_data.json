@@ -6850,6 +6850,977 @@
       "final_answer": "The Pambayang Dalubhasaan ng Marilao (PDM) has a clear vision and mission as outlined in its institutional identity document.\n\n- Vision: \"The Pambayang Dalubhasaan ng Marilao (PDM), a premier higher education institution in the region in providing quality subsidized tertiary education and industry training programs committed to produce globally competent, competitive, capable, and skillful graduates who excel in their chosen field.\" `[institutional_identity_mission_vision]`\n- Mission: \"Cognizant of the importance of contributing to the realization of national development goals and right of every citizen to quality education, PDM commits itself to the provision of quality education, and mold its students into productive and responsible citizens who are imbued with virtues, aware of their national heritage, and proud of their local culture.\" `[institutional_identity_mission_vision]`",
       "error_message": null,
       "corruption_details": null
+    },
+    {
+      "query": "hello",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {}
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 2.055856227874756,
+      "timestamp": "2025-10-14T22:49:33.346567",
+      "final_answer": "Hello! How can I assist you today?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "what do you know",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_database_summary",
+              "parameters": {}
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 2,
+      "execution_time": 2.3299975395202637,
+      "timestamp": "2025-10-14T22:49:53.284787",
+      "final_answer": "I know about the students in the database. Here are the details:\n\n- The database contains information about students.\n- There are 150 student records in the database.\n- Key information about each student includes completion percentage, contact number, course, creation date, department, first name, and full name. [collection_info]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "hello",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "hello"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 1.965423822402954,
+      "timestamp": "2025-10-14T22:51:44.589607",
+      "final_answer": "Hello! How can I assist you today?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who am i",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "who am i"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 2.075305461883545,
+      "timestamp": "2025-10-14T22:51:53.472975",
+      "final_answer": "I'm sorry, but I don't have the necessary information to identify you. Is there something specific you would like to know or talk about?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "what is pdm",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_school_info",
+              "parameters": {
+                "topic": "pdm"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "FAIL_EMPTY",
+      "analyst_mode": "online",
+      "execution_mode": "fallback",
+      "results_count": 0,
+      "execution_time": 2.682985305786133,
+      "timestamp": "2025-10-14T22:52:06.841989",
+      "final_answer": "I couldn't find any information about PDM or Pambayang Dalubhasaan ng Marilao in the provided documents.",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "hello",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "hello"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 3.155040740966797,
+      "timestamp": "2025-10-14T22:53:19.523932",
+      "final_answer": "Hello! How can I assist you today?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is rebecca",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "rebecca"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 2.685124635696411,
+      "timestamp": "2025-10-14T22:54:38.703865",
+      "final_answer": "Rebecca Stone is a second-year student in the Bachelor of Science in Computer Science (BSCS) program, Section A, under the College of Computer Studies (CCS).\n\n- She is enrolled with the student ID PDM-2025-000036.\n- Her profile completion is at 87.5%, with all required fields marked as complete except for the audio field, which is waiting.\n- Her guardian is Kimberly Rodriguez.\n- Her contact number is 9524683884.\n- Her profile was created on October 12, 2025, and last updated on October 12, 2025. [students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is mark",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "mark"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 0,
+      "execution_time": 4.184036493301392,
+      "timestamp": "2025-10-15T20:50:04.209734",
+      "final_answer": "I couldn't find any information about Mark in the provided documents.",
+      "error_message": "'AIAnalyst' object has no attribute 'nlp'",
+      "corruption_details": null
+    },
+    {
+      "query": "who is mark",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "mark"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 4.974710702896118,
+      "timestamp": "2025-10-15T20:52:25.642829",
+      "final_answer": "There are multiple students named Mark at PDM. Which one are you looking for?\n\n- Barnes, Mark (BSCS - Year 2 - Section A)\n- Mark Bautista (BSIT - Year 1 - Section A)\n- Mark Garcia (BSIT - Year 1 - Section A)\n- Mark Mendoza (BSIT - Year 1 - Section A)\n- Mark Castro (BSIT - Year 4 - Section A)",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "from bsit year 1 section a",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "Mark Bautista"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 5.063738822937012,
+      "timestamp": "2025-10-15T20:52:44.020364",
+      "final_answer": "Mark Bautista is a first-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n\n- He is enrolled with the student ID PDM-2025-001355.\n- His profile completion is at 50.0%, with the student ID and course fields marked as complete, while the surname and first name fields are missing.\n- His guardian is Daniel Reyes.\n- His contact number is 9681502410.\n- His profile was created on October 12, 2025, and last updated on October 12, 2025. [students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "exit\\",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "exit"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 3.2186946868896484,
+      "timestamp": "2025-10-15T20:54:56.330206",
+      "final_answer": "You're welcome! If you have any more questions or need further assistance, feel free to ask. Have a great day!",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is mark?",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "Mark Bautista"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 3.812107563018799,
+      "timestamp": "2025-10-15T20:55:21.565368",
+      "final_answer": "Mark Bautista is a first-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n\n- He is enrolled with the student ID PDM-2025-001355.\n- His profile completion is at 50.0%, with the student ID and course fields marked as complete, while the surname and first name fields are missing.\n- His guardian is Daniel Reyes.\n- His contact number is 9681502410.\n- His profile was created on October 12, 2025, and last updated on October 12, 2025. [students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is john",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "john"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 3.606480836868286,
+      "timestamp": "2025-10-15T20:55:55.912706",
+      "final_answer": "John Walker is a second-year student in the Bachelor of Science in Computer Science (BSCS) program, Section A, under the College of Computer Studies (CCS).\n\n- He is enrolled with the student ID PDM-2025-000052.\n- His profile completion is at 87.5%, with the student ID, surname, first name, course, section, and year fields marked as complete.\n- His contact number is 9192445008.\n- His guardian is Wanda Roberts.\n- His profile was created on October 12, 2025, and last updated on October 12, 2025. [students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is michael",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "michael"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 3,
+      "execution_time": 3.368919849395752,
+      "timestamp": "2025-10-15T20:56:30.692375",
+      "final_answer": "Michael Carpenter is a second-year student in the Bachelor of Science in Computer Science (BSCS) program, Section A, under the College of Computer Studies (CCS).\n\n- He is enrolled with the student ID PDM-2025-000031.\n- His profile completion is at 87.5%, with the student ID, surname, first name, course, section, and year fields marked as complete.\n- His contact number is 9211796807.\n- His guardian is Victor Martin.\n- His profile was created on October 12, 2025, and last updated on October 12, 2025. [students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is williams",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "williams"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 4.15379524230957,
+      "timestamp": "2025-10-15T20:58:01.881055",
+      "final_answer": "Chloe Williams is a second-year student in the Bachelor of Science in Computer Science (BSCS) program, Section A, under the College of Computer Studies (CCS).\n\n- She is enrolled with the student ID PDM-2025-000041.\n- Her profile completion is at 87.5%, with the student ID, surname, first name, course, section, and year fields marked as complete.\n- Her contact number is 9945427450.\n- Her guardian is Anthony Carter.\n- Her profile was created on October 12, 2025, and last updated on October 12, 2025. [students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 9.696161031723022,
+      "timestamp": "2025-10-15T20:58:51.006805",
+      "final_answer": "There are 9 students named Castro. Here are the details:\n\n- **Mary Castro** is a second-year student in the Bachelor of Science in Computer Science (BSCS) program, Section A, under the College of Computer Studies (CCS).\n  - Student ID: PDM-2025-000060\n  - Contact: 9571735838\n  - Guardian: George Howard [system_summary]\n\n- **Catherine Castro** is a first-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n  - Student ID: PDM-2025-001346\n  - Contact: 9427806207\n  - Guardian: Gloria Castro [system_summary]\n\n- **Catherine Castro** is a first-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n  - Student ID: PDM-2025-001349\n  - Contact: 9504734177\n  - Guardian: Alberto Mendoza [system_summary]\n\n- **Juan Castro** is a first-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n  - Student ID: PDM-2025-001347\n  - Contact: 9868342721\n  - Guardian: Patricia Santos [system_summary]\n\n- **Angela Castro** is a fourth-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n  - Student ID: PDM-2025-001441\n  - Contact: 9287853045\n  - Guardian: Alberto Reyes [system_summary]\n\n- **Juan Castro** is a fourth-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n  - Student ID: PDM-2025-001428\n  - Contact: 9155340702\n  - Guardian: Lucia Garcia [system_summary]\n\n- **Mark Castro** is a fourth-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n  - Student ID: PDM-2025-001448\n  - Contact: 9674243201\n  - Guardian: Alberto Cruz [system_summary]\n\n- **Miguel Castro** is a fourth-year student in the Bachelor of Science in Information Technology (BSIT) program, Section A, under the College of Computer Studies (CCS).\n  - Student ID: PDM-2025-001443\n  - Contact: 9651962981\n  - Guardian: Antonio Garcia [system_summary]\n\n- **N/A Castro** is a student with no available information. [system_summary]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 2,
+      "execution_time": 3.591886281967163,
+      "timestamp": "2025-10-15T21:03:01.366670",
+      "final_answer": "There are 2 students named Catherine Castro. To help me find the right one, could you tell me their guardian's name?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "gloria",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "get_person_profile",
+              "parameters": {
+                "person_name": "Catherine Castro",
+                "guardian_name": "Gloria Castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 2,
+      "execution_time": 4.0556910037994385,
+      "timestamp": "2025-10-15T21:03:29.223045",
+      "final_answer": "There are 2 students named Catherine Castro. To help me find the right one, could you tell me their guardian's name?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "Castro",
+                "guardian_name": "Gloria"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 2,
+      "execution_time": 9.136259317398071,
+      "timestamp": "2025-10-15T21:04:08.376550",
+      "final_answer": "There are 2 students named Catherine Castro. To help me find the right one, could you tell me their guardian's name?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro",
+                "role": "student"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 4.397514820098877,
+      "timestamp": "2025-10-15T21:06:36.251183",
+      "final_answer": "There are 2 students named Catherine Castro. To help me find the right one, could you tell me their guardian's name?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 2,
+      "execution_time": 3.6881942749023438,
+      "timestamp": "2025-10-15T21:08:38.632526",
+      "final_answer": "There are 2 students named Juan Castro. To help me find the right one, could you tell me their year level?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro",
+                "role": "student"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 5.077398061752319,
+      "timestamp": "2025-10-15T21:13:03.180241",
+      "final_answer": "There are 9 students named Castro. To help me find the right one, could you tell me their year level or course?\n\n- **Castro, Mary**\n  - **Student ID:** PDM-2025-000060\n  - **Department:** CCS\n  - **Contact:** 9571735838\n  - **Guardian:** George Howard\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001346\n  - **Department:** CCS\n  - **Contact:** 9427806207\n  - **Guardian:** Gloria Castro\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001349\n  - **Department:** CCS\n  - **Contact:** 9504734177\n  - **Guardian:** Alberto Mendoza\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001347\n  - **Department:** CCS\n  - **Contact:** 9868342721\n  - **Guardian:** Patricia Santos\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Angela Castro**\n  - **Student ID:** PDM-2025-001441\n  - **Department:** CCS\n  - **Contact:** 9287853045\n  - **Guardian:** Alberto Reyes\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001428\n  - **Department:** CCS\n  - **Contact:** 9155340702\n  - **Guardian:** Lucia Garcia\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Mark Castro**\n  - **Student ID:** PDM-2025-001448\n  - **Department:** CCS\n  - **Contact:** 9674243201\n  - **Guardian:** Alberto Cruz\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Miguel Castro**\n  - **Student ID:** PDM-2025-001443\n  - **Department:** CCS\n  - **Contact:** 9651962981\n  - **Guardian:** Antonio Garcia\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **N/A**\n  - **Student ID:** N/A\n  - **Department:** N/A\n  - **Contact:** N/A\n  - **Guardian:** N/A\n  - **Guardian Contact:** N/A\n  - [source_collection: system_summary]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 9,
+      "execution_time": 9.953602075576782,
+      "timestamp": "2025-10-15T21:17:07.840931",
+      "final_answer": "There are 9 students named Castro. To help me find the right one, could you tell me their year level or course?\n\n- **Castro, Mary**\n  - **Student ID:** PDM-2025-000060\n  - **Department:** CCS\n  - **Contact:** 9571735838\n  - **Guardian:** George Howard\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001346\n  - **Department:** CCS\n  - **Contact:** 9427806207\n  - **Guardian:** Gloria Castro\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001349\n  - **Department:** CCS\n  - **Contact:** 9504734177\n  - **Guardian:** Alberto Mendoza\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001347\n  - **Department:** CCS\n  - **Contact:** 9868342721\n  - **Guardian:** Patricia Santos\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Angela Castro**\n  - **Student ID:** PDM-2025-001441\n  - **Department:** CCS\n  - **Contact:** 9287853045\n  - **Guardian:** Alberto Reyes\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001428\n  - **Department:** CCS\n  - **Contact:** 9155340702\n  - **Guardian:** Lucia Garcia\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Mark Castro**\n  - **Student ID:** PDM-2025-001448\n  - **Department:** CCS\n  - **Contact:** 9674243201\n  - **Guardian:** Alberto Cruz\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Miguel Castro**\n  - **Student ID:** PDM-2025-001443\n  - **Department:** CCS\n  - **Contact:** 9651962981\n  - **Guardian:** Antonio Garcia\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **N/A**\n  - **Student ID:** N/A\n  - **Department:** N/A\n  - **Contact:** N/A\n  - **Guardian:** N/A\n  - **Guardian Contact:** N/A\n  - [source_collection: system_signal]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who are the 2nd year bscs students",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "program": "BSCS",
+                "year_level": 2,
+                "role": "student"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 8.98597502708435,
+      "timestamp": "2025-10-15T21:17:49.136706",
+      "final_answer": "There are 30 students in the 2nd year BSCS - Section A. Here is the complete list:\n\n- **Ali, Charles**\n  - **Student ID:** PDM-2025-000049\n  - [source_collection: system_summary]\n\n- **Barnes, Mark**\n  - **Student ID:** PDM-2025-000035\n  - [source_collection: system_summary]\n\n- **Bridges, Mary**\n  - **Student ID:** PDM-2025-000045\n  - [source_collection: system_summary]\n\n- **Bright, Ryan**\n  - **Student ID:** PDM-2025-000040\n  - [source_collection: system_summary]\n\n- **Brooks, Christina**\n  - **Student ID:** PDM-2025-000054\n  - [source_collection: system_summary]\n\n- **Burton, Joe**\n  - **Student ID:** PDM-2025-000051\n  - [source_collection: system_summary]\n\n- **Carpenter, Michael**\n  - **Student ID:** PDM-2025-000031\n  - [source_collection: system_summary]\n\n- **Castro, Mary**\n  - **Student ID:** PDM-2025-000060\n  - [source_collection: system_summary]\n\n- **Clarke, Jacob**\n  - **Student ID:** PDM-2025-000042\n  - [source_collection: system_summary]\n\n- **Cox, Susan**\n  - **Student ID:** PDM-2025-000047\n  - [source_collection: system_summary]\n\n- **Gray, Mary**\n  - **Student ID:** PDM-2025-000050\n  - [source_collection: system_summary]\n\n- **Hodge, Karen**\n  - **Student ID:** PDM-2025-000043\n  - [source_collection: system_summary]\n\n- **Hudson, Samantha**\n  - **Student ID:** PDM-2025-000046\n  - [source_collection: system_summary]\n\n- **Martinez, Maria**\n  - **Student ID:** PDM-2025-000033\n  - [source_collection: system_summary]\n\n- **Miles, David**\n  - **Student ID:** PDM-2025-000059\n  - [source_collection: system_summary]\n\n- **Miles, Karen**\n  - **Student ID:** PDM-2025-000044\n  - [source_collection: system_summary]\n\n- **Miller, Logan**\n  - **Student ID:** PDM-2025-000034\n  - [source_collection: system_summary]\n\n- **Ochoa, Jaime**\n  - **Student ID:** PDM-2025-000038\n  - [source_collection: system_summary]\n\n- **Pace, Lee**\n  - **Student ID:** PDM-2025-000037\n  - [source_collection: system_summary]\n\n- **Palmer, Brian**\n  - **Student ID:** PDM-2025-000058\n  - [source_collection: system_summary]\n\n- **Richard, Jackie**\n  - **Student ID:** PDM-2025-000055\n  - [source_collection: system_summary]\n\n- **Roberts, Steven**\n  - **Student ID:** PDM-2025-000057\n  - [source_collection: system_summary]\n\n- **Ruiz, Erin**\n  - **Student ID:** PDM-2025-000032\n  - [source_collection: system_summary]\n\n- **Stone, Rebecca**\n  - **Student ID:** PDM-2025-000036\n  - [source_collection: system_summary]\n\n- **Sutton, Christopher**\n  - **Student ID:** PDM-2025-000053\n  - [source_collection: system_summary]\n\n- **Valdez, Elizabeth**\n  - **Student ID:** PDM-2025-000048\n  - [source_collection: system_summary]\n\n- **Walker, John**\n  - **Student ID:** PDM-2025-000052\n  - [source_collection: system_summary]\n\n- **Walker, Megan**\n  - **Student ID:** PDM-2025-000056\n  - [source_collection: system_summary]\n\n- **White, Rhonda**\n  - **Student ID:** PDM-2025-000039\n  - [source_collection: system_summary]\n\n- **Williams, Chloe**\n  - **Student ID:** PDM-2025-000041\n  - [source_collection: system_summary]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is mary",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "program": "BSCS",
+                "year_level": 2,
+                "name": "mary"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 5,
+      "execution_time": 4.291593790054321,
+      "timestamp": "2025-10-15T21:22:53.531253",
+      "final_answer": "There are 3 students named Mary. To help me find the right one, could you tell me their course or year level?\n\n- **Bridges, Mary**\n  - **Student ID:** PDM-2025-000045\n  - **Department:** CCS\n  - **Contact:** 9707570785\n  - **Guardian:** Robert Lopez\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Gray, Mary**\n  - **Student ID:** PDM-2025-000050\n  - **Department:** CCS\n  - **Contact:** 9285572911\n  - **Guardian:** Alicia Cobb\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Castro, Mary**\n  - **Student ID:** PDM-2025-000060\n  - **Department:** CCS\n  - **Contact:** 9571735838\n  - **Guardian:** George Howard\n  - **Guardian Contact:**\n  - [source_collection: students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 10,
+      "execution_time": 7.324630498886108,
+      "timestamp": "2025-10-15T21:23:14.293213",
+      "final_answer": "There are 9 students named Castro. To help me find the right one, could you tell me their course or year level?\n\n- **Castro, Mary**\n  - **Student ID:** PDM-2025-000060\n  - **Department:** CCS\n  - **Contact:** 9571735838\n  - **Guardian:** George Howard\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001346\n  - **Department:** CCS\n  - **Contact:** 9427806207\n  - **Guardian:** Gloria Castro\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001349\n  - **Department:** CCS\n  - **Contact:** 9504734177\n  - **Guardian:** Alberto Mendoza\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001347\n  - **Department:** CCS\n  - **Contact:** 9868342721\n  - **Guardian:** Patricia Santos\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Angela Castro**\n  - **Student ID:** PDM-2025-001441\n  - **Department:** CCS\n  - **Contact:** 9287853045\n  - **Guardian:** Alberto Reyes\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001428\n  - **Department:** CCS\n  - **Contact:** 9155340702\n  - **Guardian:** Lucia Garcia\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Mark Castro**\n  - **Student ID:** PDM-2025-001448\n  - **Department:** CCS\n  - **Contact:** 9674243201\n  - **Guardian:** Alberto Cruz\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Miguel Castro**\n  - **Student ID:** PDM-2025-001443\n  - **Department:** CCS\n  - **Contact:** 9651962981\n  - **Guardian:** Antonio Garcia\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **N/A**\n  - **Student ID:** N/A\n  - **Department:** N/A\n  - **Contact:** N/A\n  - **Guardian:** N/A\n  - **Guardian Contact:** N/A\n  - [source_collection: system_signal]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who are the bscs 2nd year students",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "program": "BSCS",
+                "year_level": 2,
+                "role": "student"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 9.605245590209961,
+      "timestamp": "2025-10-15T21:23:33.830109",
+      "final_answer": "There are 30 students in the 2nd year BSCS - Section A. Here is the complete list:\n\n- **Ali, Charles**\n  - **Student ID:** PDM-2025-000049\n  - [source_collection: system_summary]\n\n- **Barnes, Mark**\n  - **Student ID:** PDM-2025-000035\n  - [source_collection: system_summary]\n\n- **Bridges, Mary**\n  - **Student ID:** PDM-2025-000045\n  - [source_collection: system_summary]\n\n- **Bright, Ryan**\n  - **Student ID:** PDM-2025-000040\n  - [source_collection: system_summary]\n\n- **Brooks, Christina**\n  - **Student ID:** PDM-2025-000054\n  - [source_collection: system_summary]\n\n- **Burton, Joe**\n  - **Student ID:** PDM-2025-000051\n  - [source_collection: system_summary]\n\n- **Carpenter, Michael**\n  - **Student ID:** PDM-2025-000031\n  - [source_collection: system_summary]\n\n- **Castro, Mary**\n  - **Student ID:** PDM-2025-000060\n  - [source_collection: system_summary]\n\n- **Clarke, Jacob**\n  - **Student ID:** PDM-2025-000042\n  - [source_collection: system_summary]\n\n- **Cox, Susan**\n  - **Student ID:** PDM-2025-000047\n  - [source_collection: system_summary]\n\n- **Gray, Mary**\n  - **Student ID:** PDM-2025-000050\n  - [source_collection: system_summary]\n\n- **Hodge, Karen**\n  - **Student ID:** PDM-2025-000043\n  - [source_collection: system_summary]\n\n- **Hudson, Samantha**\n  - **Student ID:** PDM-2025-000046\n  - [source_collection: system_summary]\n\n- **Martinez, Maria**\n  - **Student ID:** PDM-2025-000033\n  - [source_collection: system_summary]\n\n- **Miles, David**\n  - **Student ID:** PDM-2025-000059\n  - [source_collection: system_summary]\n\n- **Miles, Karen**\n  - **Student ID:** PDM-2025-000044\n  - [source_collection: system_summary]\n\n- **Miller, Logan**\n  - **Student ID:** PDM-2025-000034\n  - [source_collection: system_summary]\n\n- **Ochoa, Jaime**\n  - **Student ID:** PDM-2025-000038\n  - [source_collection: system_summary]\n\n- **Pace, Lee**\n  - **Student ID:** PDM-2025-000037\n  - [source_collection: system_summary]\n\n- **Palmer, Brian**\n  - **Student ID:** PDM-2025-000058\n  - [source_collection: system_summary]\n\n- **Richard, Jackie**\n  - **Student ID:** PDM-2025-000055\n  - [source_collection: system_summary]\n\n- **Roberts, Steven**\n  - **Student ID:** PDM-2025-000057\n  - [source_collection: system_summary]\n\n- **Ruiz, Erin**\n  - **Student ID:** PDM-2025-000032\n  - [source_collection: system_summary]\n\n- **Stone, Rebecca**\n  - **Student ID:** PDM-2025-000036\n  - [source_collection: system_summary]\n\n- **Sutton, Christopher**\n  - **Student ID:** PDM-2025-000053\n  - [source_collection: system_summary]\n\n- **Valdez, Elizabeth**\n  - **Student ID:** PDM-2025-000048\n  - [source_collection: system_summary]\n\n- **Walker, John**\n  - **Student ID:** PDM-2025-000052\n  - [source_collection: system_summary]\n\n- **Walker, Megan**\n  - **Student ID:** PDM-2025-000056\n  - [source_collection: system_summary]\n\n- **White, Rhonda**\n  - **Student ID:** PDM-2025-000039\n  - [source_collection: system_summary]\n\n- **Williams, Chloe**\n  - **Student ID:** PDM-2025-000041\n  - [source_collection: system_summary]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro",
+                "program": "BSCS",
+                "year_level": 2
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 4.564992189407349,
+      "timestamp": "2025-10-15T21:25:03.503625",
+      "final_answer": "Mary Castro is a student in the BSCS program, 2nd year, Section A, in the College of Computer Studies (CCS).\n\n- **Student ID:** PDM-2025-000060\n- **Department:** CCS\n- **Contact:** 9571735838\n- **Guardian:** George Howard\n- **Guardian Contact:**\n- [source_collection: students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who are castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 6.3146021366119385,
+      "timestamp": "2025-10-15T21:25:24.925925",
+      "final_answer": "There are 8 students named Castro. To help me find the right one, could you tell me their course or year level?\n\n- **Castro, Mary**\n  - **Student ID:** PDM-2025-000060\n  - **Department:** CCS\n  - **Contact:** 9571735838\n  - **Guardian:** George Howard\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001346\n  - **Department:** CCS\n  - **Contact:** 9427806207\n  - **Guardian:** Gloria Castro\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001349\n  - **Department:** CCS\n  - **Contact:** 9504734177\n  - **Guardian:** Alberto Mendoza\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001347\n  - **Department:** CCS\n  - **Contact:** 9868342721\n  - **Guardian:** Patricia Santos\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Angela Castro**\n  - **Student ID:** PDM-2025-001441\n  - **Department:** CCS\n  - **Contact:** 9287853045\n  - **Guardian:** Alberto Reyes\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001428\n  - **Department:** CCS\n  - **Contact:** 9155340702\n  - **Guardian:** Lucia Garcia\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Mark Castro**\n  - **Student ID:** PDM-2025-001448\n  - **Department:** CCS\n  - **Contact:** 9674243201\n  - **Guardian:** Alberto Cruz\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Miguel Castro**\n  - **Student ID:** PDM-2025-001443\n  - **Department:** CCS\n  - **Contact:** 9651962981\n  - **Guardian:** Antonio Garcia\n  - **Guardian Contact:**\n  - [source_collection: system_summary]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro",
+                "program": "BSCS"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "FAIL_EMPTY",
+      "analyst_mode": "online",
+      "execution_mode": "fallback",
+      "results_count": 0,
+      "execution_time": 4.458855867385864,
+      "timestamp": "2025-10-15T21:26:27.288839",
+      "final_answer": "I couldn't find any information about Castro in the provided documents.",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who are all the castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 3.6474478244781494,
+      "timestamp": "2025-10-15T21:26:53.093819",
+      "final_answer": "Angela Castro is a student in the BSIT program, 4th year, Section A, in the College of Computer Studies (CCS).\n\n- **Student ID:** PDM-2025-001441\n- **Department:** CCS\n- **Contact:** 9287853045\n- **Guardian:** Alberto Reyes\n- **Guardian Contact:**\n- [source_collection: students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who are all the castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 3.9113073348999023,
+      "timestamp": "2025-10-15T21:28:07.743423",
+      "final_answer": "Angela Castro is a student in the BSIT program, 4th year, Section A, in the College of Computer Studies (CCS).\n\n- **Student ID:** PDM-2025-001441\n- **Department:** CCS\n- **Contact:** 9287853045\n- **Guardian:** Alberto Reyes\n- **Guardian Contact:**\n- [source_collection: students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who are all the castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 1,
+      "execution_time": 10.187719345092773,
+      "timestamp": "2025-10-15T21:29:09.261684",
+      "final_answer": "There are 8 students named Castro in the system.\n\n- **Mary Castro**\n  - **Student ID:** PDM-2025-000060\n  - **Department:** CCS\n  - **Contact:** 9571735838\n  - **Guardian:** George Howard\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001346\n  - **Department:** CCS\n  - **Contact:** 9427806207\n  - **Guardian:** Gloria Castro\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001349\n  - **Department:** CCS\n  - **Contact:** 9504734177\n  - **Guardian:** Alberto Mendoza\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001347\n  - **Department:** CCS\n  - **Contact:** 9868342721\n  - **Guardian:** Patricia Santos\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Angela Castro**\n  - **Student ID:** PDM-2025-001441\n  - **Department:** CCS\n  - **Contact:** 9287853045\n  - **Guardian:** Alberto Reyes\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001428\n  - **Department:** CCS\n  - **Contact:** 9155340702\n  - **Guardian:** Lucia Garcia\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Mark Castro**\n  - **Student ID:** PDM-2025-001448\n  - **Department:** CCS\n  - **Contact:** 9674243201\n  - **Guardian:** Alberto Cruz\n  - **Guardian Contact:**\n  - [source_collection: system_summary]\n\n- **Miguel Castro**\n  - **Student ID:** PDM-2025-001443\n  - **Department:** CCS\n  - **Contact:** 9651962981\n  - **Guardian:** Antonio Garcia\n  - **Guardian Contact:**\n  - [source_collection: system_summary]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "who is castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "castro",
+                "role": "student",
+                "department": "CCS"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 3,
+      "execution_time": 7.4198408126831055,
+      "timestamp": "2025-10-15T21:53:29.804591",
+      "final_answer": "There are 8 students named Castro in the system.\n\n- **Mary Castro**\n  - **Student ID:** PDM-2025-000060\n  - **Department:** CCS\n  - **Contact:** 9571735838\n  - **Guardian:** George Howard\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001346\n  - **Department:** CCS\n  - **Contact:** 9427806207\n  - **Guardian:** Gloria Castro\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001347\n  - **Department:** CCS\n  - **Contact:** 9868342721\n  - **Guardian:** Patricia Santos\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Catherine Castro**\n  - **Student ID:** PDM-2025-001349\n  - **Department:** CCS\n  - **Contact:** 9504734177\n  - **Guardian:** Alberto Mendoza\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Juan Castro**\n  - **Student ID:** PDM-2025-001428\n  - **Department:** CCS\n  - **Contact:** 9155340702\n  - **Guardian:** Lucia Garcia\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Angela Castro**\n  - **Student ID:** PDM-2025-001441\n  - **Department:** CCS\n  - **Contact:** 9287853045\n  - **Guardian:** Alberto Reyes\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Miguel Castro**\n  - **Student ID:** PDM-2025-001443\n  - **Department:** CCS\n  - **Contact:** 9651962981\n  - **Guardian:** Antonio Garcia\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Mark Castro**\n  - **Student ID:** PDM-2025-001448\n  - **Department:** CCS\n  - **Contact:** 9674243201\n  - **Guardian:** Alberto Cruz\n  - **Guardian Contact:**\n  - [source_collection: students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "hello(angry)",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "hello(angry)"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 2.361612319946289,
+      "timestamp": "2025-10-16T18:13:01.726605",
+      "final_answer": "Hello! I'm here to help. What can I do for you today?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "hello i am angry",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "hello i am angry"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 2.819193124771118,
+      "timestamp": "2025-10-16T18:13:10.203233",
+      "final_answer": "I'm sorry to hear that you're feeling angry. I'm here to help in any way I can. What's been bothering you?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "TELL ME THE STUDENTS NAMED MARK IM SO ANGRY AT Catherine Castro",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "find_people",
+              "parameters": {
+                "name": "Mark"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_DIRECT",
+      "analyst_mode": "online",
+      "execution_mode": "primary",
+      "results_count": 5,
+      "execution_time": 3.8012022972106934,
+      "timestamp": "2025-10-16T18:13:36.383799",
+      "final_answer": "There are 6 students named Mark in the system.\n\n- **Mark Barnes**\n  - **Student ID:** PDM-2025-000035\n  - **Program:** BSCS\n  - **Year:** 2\n  - **Section:** A\n  - **Department:** CCS\n  - **Contact:** 9295486387\n  - **Guardian:** Matthew Colon\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Mark Garcia**\n  - **Student ID:** PDM-2025-001354\n  - **Program:** BSIT\n  - **Year:** 1\n  - **Section:** A\n  - **Department:** CCS\n  - **Contact:** 9614411509\n  - **Guardian:** Roberto Cruz\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Mark Bautista**\n  - **Student ID:** PDM-2025-001355\n  - **Program:** BSIT\n  - **Year:** 1\n  - **Section:** A\n  - **Department:** CCS\n  - **Contact:** 9681502410\n  - **Guardian:** Daniel Reyes\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Mark Mendoza**\n  - **Student ID:** PDM-2025-001357\n  - **Program:** BSIT\n  - **Year:** 1\n  - **Section:** A\n  - **Department:** CCS\n  - **Contact:** 9711320301\n  - **Guardian:** Lucia Santos\n  - **Guardian Contact:**\n  - [source_collection: students]\n\n- **Mark Castro**\n  - **Student ID:** PDM-2025-001448\n  - **Program:** BSIT\n  - **Year:** 4\n  - **Section:** A\n  - **Department:** CCS\n  - **Contact:** 9674243201\n  - **Guardian:** Alberto Cruz\n  - **Guardian Contact:**\n  - [source_collection: students]",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "hello angry",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "hello angry"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 2.051398277282715,
+      "timestamp": "2025-10-16T18:13:50.473903",
+      "final_answer": "I'm here to help. What can I do for you today?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "hello (my emotion is angry)",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "hello"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 2.0054876804351807,
+      "timestamp": "2025-10-16T18:14:02.420442",
+      "final_answer": "I'm sorry to hear that you're feeling angry. I'm here to help in any way I can. What's been bothering you?",
+      "error_message": null,
+      "corruption_details": null
+    },
+    {
+      "query": "good morning ai. (my emotion angry)",
+      "plan": {
+        "plan": [
+          {
+            "tool_call": {
+              "tool_name": "answer_conversational_query",
+              "parameters": {
+                "query": "good morning ai. (my emotion angry)"
+              }
+            }
+          }
+        ]
+      },
+      "outcome": "SUCCESS_CONVERSATIONAL",
+      "analyst_mode": "unknown",
+      "execution_mode": "unknown",
+      "results_count": 0,
+      "execution_time": 1.8778858184814453,
+      "timestamp": "2025-10-16T18:14:15.981491",
+      "final_answer": "Good morning! I'm here to help. What's been bothering you?",
+      "error_message": null,
+      "corruption_details": null
     }
   ],
   "query_patterns": {},

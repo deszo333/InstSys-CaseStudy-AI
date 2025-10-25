@@ -1,402 +1,175 @@
 """
-Image and Audio Upload System for Students
-Upload media files and store them in MongoDB using GridFS
+Database Image Backfill Utility
+
+This script connects to the 'school_system' database, iterates through all
+student collections, and generates a unique placeholder image for any student
+who is missing one.
+
+The generated image is a simple colored background with the student's name
+and ID, which is then saved as Base64 data directly into the student's
+document. This is a one-time operation to prepare the database for
+image-related features.
+
+Dependencies:
+- pymongo: pip install pymongo
+- Pillow: pip install Pillow
 """
-
-import os
+import io
 import base64
-from pathlib import Path
-from main import StudentDatabase
-import gridfs
+import random
+from datetime import datetime
 from pymongo import MongoClient
+from PIL import Image, ImageDraw, ImageFont
+import sys
 
-class MediaUploader:
-    def __init__(self, connection_string=None, database_name="school_system"):
-        """Initialize media uploader with GridFS support"""
-        if connection_string is None:
-            connection_string = "mongodb://localhost:27017/"
-        
-        self.client = MongoClient(connection_string)
-        self.db = self.client[database_name]
-        self.student_db = StudentDatabase(connection_string, database_name)
-        
-        # GridFS for storing large files
-        self.fs = gridfs.GridFS(self.db)
-        
-        print("✅ Media uploader initialized")
-    
-    def upload_image_base64(self, student_id, image_path):
-        """
-        Upload image as base64 (for small images < 1MB)
-        Simple method - stores directly in student document
-        """
+class DatabaseImageInitializer:
+    """
+    Handles the logic for connecting to the database and backfilling
+    placeholder images for students.
+    """
+
+    def __init__(self, connection_string, database_name, collections_to_process):
+        """Initializes the database connection."""
         try:
-            # Read image file
-            with open(image_path, 'rb') as img_file:
-                image_data = img_file.read()
-            
-            # Convert to base64
-            image_base64 = base64.b64encode(image_data).decode('utf-8')
-            
-            # Get file info
-            file_size = len(image_data)
-            filename = os.path.basename(image_path)
-            
-            print(f"📸 Uploading image: {filename}")
-            print(f"   Size: {file_size / 1024:.2f} KB")
-            print(f"   Student ID: {student_id}")
-            
-            # Update student record
-            success = self.student_db.update_media(
-                student_id=student_id,
-                media_type='image',
-                media_data=image_base64,
-                filename=filename
-            )
-            
-            if success:
-                print(f"✅ Image uploaded successfully!")
-                return True
-            else:
-                print(f"❌ Failed to update student record")
-                return False
-                
-        except FileNotFoundError:
-            print(f"❌ Image file not found: {image_path}")
-            return False
+            self.client = MongoClient(connection_string, serverSelectionTimeoutMS=5000)
+            self.client.admin.command('ping')
+            self.db = self.client[database_name]
+            self.collections = collections_to_process
+            print(f"✅ Successfully connected to MongoDB database: '{database_name}'")
         except Exception as e:
-            print(f"❌ Error uploading image: {e}")
-            return False
-    
-    def upload_image_gridfs(self, student_id, image_path):
+            print(f"❌ Could not connect to MongoDB: {e}")
+            sys.exit(1)
+
+        self.total_students_processed = 0
+        self.total_images_generated = 0
+
+    def generate_placeholder_image(self, name: str, student_id: str) -> bytes:
         """
-        Upload image using GridFS (for larger files)
-        Better for files > 1MB - stores in separate chunks
+        Generates a simple, colored placeholder image with text using Pillow.
         """
+        # A list of nice, dark background colors for good contrast
+        colors = [
+            (46, 52, 64), (59, 66, 82), (67, 76, 94),
+            (76, 86, 106), (94, 38, 50), (107, 45, 45)
+        ]
+        bg_color = random.choice(colors)
+        text_color = (236, 239, 244)
+        img = Image.new('RGB', (400, 200), color=bg_color)
+        draw = ImageDraw.Draw(img)
+
         try:
-            # Read image file
-            with open(image_path, 'rb') as img_file:
-                image_data = img_file.read()
+            # Try to use a common system font, fall back to default if not found
+            title_font = ImageFont.truetype("arial.ttf", 24)
+            detail_font = ImageFont.truetype("arial.ttf", 18)
+        except IOError:
+            title_font = ImageFont.load_default()
+            detail_font = ImageFont.load_default()
+
+        # Draw text on the image
+        draw.text((20, 20), "Placeholder Image", fill=text_color, font=title_font)
+        draw.text((20, 80), f"Name: {name}", fill=text_color, font=detail_font)
+        draw.text((20, 110), f"ID: {student_id}", fill=text_color, font=detail_font)
+
+        # Save image to an in-memory buffer
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        return buffer.getvalue()
+
+    def process_collections(self):
+        """
+        Iterates through the specified collections and updates students
+        who are missing image data.
+        """
+        print("\nStarting image backfill process...")
+
+        for coll_name in self.collections:
+            print(f"\n--- Processing Collection: '{coll_name}' ---")
+            collection = self.db[coll_name]
             
-            filename = os.path.basename(image_path)
-            file_size = len(image_data)
+            # Query for students with a student_id but no image.data field
+            query = {
+                "student_id": {"$exists": True, "$ne": ""},
+                "$or": [
+                    {"image": {"$exists": False}},
+                    {"image.data": {"$exists": False}},
+                    {"image.data": None},
+                    {"image.data": ""}
+                ]
+            }
             
-            print(f"📸 Uploading image to GridFS: {filename}")
-            print(f"   Size: {file_size / 1024:.2f} KB")
-            print(f"   Student ID: {student_id}")
+            students_to_update = list(collection.find(query))
+            count = len(students_to_update)
+            self.total_students_processed += count
+
+            if count == 0:
+                print("✅ All students in this collection already have image data.")
+                continue
+
+            print(f"Found {count} student(s) in '{coll_name}' needing a placeholder image.")
             
-            # Store in GridFS
-            file_id = self.fs.put(
-                image_data,
-                filename=filename,
-                student_id=student_id,
-                content_type='image/jpeg'  # or detect from file extension
-            )
-            
-            print(f"   GridFS ID: {file_id}")
-            
-            # Update student record with GridFS reference
-            success = self.student_db.update_media(
-                student_id=student_id,
-                media_type='image',
-                media_data=str(file_id),  # Store GridFS ID
-                filename=filename
-            )
-            
-            if success:
-                print(f"✅ Image uploaded to GridFS successfully!")
-                return file_id
-            else:
-                print(f"❌ Failed to update student record")
-                return None
-                
-        except FileNotFoundError:
-            print(f"❌ Image file not found: {image_path}")
-            return None
-        except Exception as e:
-            print(f"❌ Error uploading image: {e}")
-            return None
-    
-    def upload_audio(self, student_id, audio_path, use_gridfs=True):
-        """Upload audio file (recommended to use GridFS for audio)"""
-        try:
-            # Read audio file
-            with open(audio_path, 'rb') as audio_file:
-                audio_data = audio_file.read()
-            
-            filename = os.path.basename(audio_path)
-            file_size = len(audio_data)
-            
-            print(f"🎤 Uploading audio: {filename}")
-            print(f"   Size: {file_size / 1024:.2f} KB")
-            print(f"   Student ID: {student_id}")
-            
-            if use_gridfs:
-                # Store in GridFS (recommended for audio)
-                file_id = self.fs.put(
-                    audio_data,
-                    filename=filename,
-                    student_id=student_id,
-                    content_type='audio/mpeg'  # adjust based on file type
+            for i, student in enumerate(students_to_update, 1):
+                student_id = student.get("student_id")
+                full_name = student.get("full_name", "N/A")
+
+                # Generate the image and encode it
+                image_bytes = self.generate_placeholder_image(full_name, student_id)
+                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+
+                # Prepare the update query
+                update_payload = {
+                    "image.data": image_base64,
+                    "image.filename": f"{student_id}_placeholder.png",
+                    "image.upload_date": datetime.utcnow()
+                }
+
+                # Update the document in the database
+                collection.update_one(
+                    {"_id": student["_id"]},
+                    {"$set": update_payload}
                 )
+                self.total_images_generated += 1
                 
-                media_data = str(file_id)
-                print(f"   GridFS ID: {file_id}")
-            else:
-                # Store as base64
-                media_data = base64.b64encode(audio_data).decode('utf-8')
-            
-            # Update student record
-            success = self.student_db.update_media(
-                student_id=student_id,
-                media_type='audio',
-                media_data=media_data,
-                filename=filename
-            )
-            
-            if success:
-                print(f"✅ Audio uploaded successfully!")
-                return True
-            else:
-                print(f"❌ Failed to update student record")
-                return False
-                
-        except FileNotFoundError:
-            print(f"❌ Audio file not found: {audio_path}")
-            return False
-        except Exception as e:
-            print(f"❌ Error uploading audio: {e}")
-            return False
-    
-    def retrieve_image(self, student_id, save_to=None):
-        """Retrieve and optionally save image"""
-        try:
-            student = self.student_db.get_student_by_id(student_id)
-            
-            if not student:
-                print(f"❌ Student {student_id} not found")
-                return None
-            
-            image_data = student.get('image', {}).get('data')
-            filename = student.get('image', {}).get('filename', 'image.jpg')
-            
-            if not image_data:
-                print(f"⚠️  No image data for student {student_id}")
-                return None
-            
-            print(f"📸 Retrieving image for {student_id}")
-            print(f"   Filename: {filename}")
-            print(f"   Data type: {'GridFS' if len(image_data) < 100 else 'Base64'}")
-            
-            # Check if it's a GridFS ID or base64
-            if len(image_data) < 100:  # Likely a GridFS ID
-                # Retrieve from GridFS
-                try:
-                    from bson.objectid import ObjectId
-                    # Convert string ID to ObjectId
-                    file_id = ObjectId(image_data)
-                    print(f"   GridFS ID: {file_id}")
-                    
-                    # Get file from GridFS
-                    grid_out = self.fs.get(file_id)
-                    image_bytes = grid_out.read()
-                    
-                    print(f"   Retrieved {len(image_bytes)} bytes from GridFS")
-                    
-                except Exception as e:
-                    print(f"❌ Failed to retrieve from GridFS: {e}")
-                    print(f"   Image data value: {image_data}")
-                    return None
-            else:
-                # Decode base64
-                image_bytes = base64.b64decode(image_data)
-                print(f"   Decoded {len(image_bytes)} bytes from base64")
-            
-            if save_to:
-                with open(save_to, 'wb') as f:
-                    f.write(image_bytes)
-                print(f"✅ Image saved to: {save_to}")
-            else:
-                # Auto-save to retrieved_images folder
-                os.makedirs("retrieved_images", exist_ok=True)
-                auto_path = os.path.join("retrieved_images", filename)
-                with open(auto_path, 'wb') as f:
-                    f.write(image_bytes)
-                print(f"✅ Image saved to: {auto_path}")
-            
-            return image_bytes
-            
-        except Exception as e:
-            print(f"❌ Error retrieving image: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-    
-    def batch_upload_from_folder(self, folder_path, use_gridfs=False):
-        """
-        Batch upload images from a folder
-        Filename should match student ID (e.g., 2024-0001.jpg)
-        """
-        try:
-            folder = Path(folder_path)
-            if not folder.exists():
-                print(f"❌ Folder not found: {folder_path}")
-                return
-            
-            # Find image files
-            image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
-            image_files = [f for f in folder.iterdir() 
-                          if f.suffix.lower() in image_extensions]
-            
-            if not image_files:
-                print(f"⚠️  No image files found in: {folder_path}")
-                return
-            
-            print(f"\n{'='*70}")
-            print(f"📦 BATCH IMAGE UPLOAD")
-            print('='*70)
-            print(f"Found {len(image_files)} image(s)")
-            
-            success_count = 0
-            failed_count = 0
-            
-            for img_file in image_files:
-                # Extract student ID from filename (remove extension)
-                student_id = img_file.stem
-                
-                print(f"\n📸 Processing: {img_file.name}")
-                print(f"   Detected Student ID: {student_id}")
-                
-                # Check if student exists
-                student = self.student_db.get_student_by_id(student_id)
-                if not student:
-                    print(f"   ⚠️  Student {student_id} not found in database - skipping")
-                    failed_count += 1
-                    continue
-                
-                # Upload image
-                if use_gridfs:
-                    result = self.upload_image_gridfs(student_id, str(img_file))
-                else:
-                    result = self.upload_image_base64(student_id, str(img_file))
-                
-                if result:
-                    success_count += 1
-                else:
-                    failed_count += 1
-            
-            print(f"\n{'='*70}")
-            print(f"✅ BATCH UPLOAD COMPLETE")
-            print('='*70)
-            print(f"Success: {success_count}/{len(image_files)}")
-            print(f"Failed: {failed_count}/{len(image_files)}")
-            
-        except Exception as e:
-            print(f"❌ Error in batch upload: {e}")
-    
+                # Print progress
+                print(f"  ({i}/{count}) Generated and saved image for {full_name} ({student_id})")
+
+        print("\n--- Image backfill process complete! ---")
+
+    def print_summary(self):
+        """Prints a final summary of the operations."""
+        print("\n" + "="*50)
+        print("📊 FINAL SUMMARY")
+        print("="*50)
+        print(f"Total students checked: {self.total_students_processed}")
+        print(f"Total placeholder images generated: {self.total_images_generated}")
+        if self.total_images_generated == 0:
+            print("\nIt looks like all students were already up to date!")
+        print("="*50)
+
     def close(self):
-        """Close connections"""
-        self.student_db.close()
-        self.client.close()
-
-
-def interactive_upload():
-    """Interactive media upload interface"""
-    print("="*70)
-    print("📸 STUDENT MEDIA UPLOAD SYSTEM")
-    print("="*70)
-    
-    uploader = MediaUploader()
-    
-    while True:
-        print(f"\n{'='*70}")
-        print("OPTIONS:")
-        print("1. Upload Single Image (Base64)")
-        print("2. Upload Single Image (GridFS)")
-        print("3. Upload Audio")
-        print("4. Batch Upload Images from Folder")
-        print("5. View Student's Image")
-        print("6. Show Pending Media Students")
-        print("7. Exit")
-        print('='*70)
-        
-        choice = input("\nSelect option (1-7): ").strip()
-        
-        if choice == "1":
-            student_id = input("\nEnter Student ID: ").strip()
-            image_path = input("Enter image path: ").strip()
-            uploader.upload_image_base64(student_id, image_path)
-            
-        elif choice == "2":
-            student_id = input("\nEnter Student ID: ").strip()
-            image_path = input("Enter image path: ").strip()
-            uploader.upload_image_gridfs(student_id, image_path)
-            
-        elif choice == "3":
-            student_id = input("\nEnter Student ID: ").strip()
-            audio_path = input("Enter audio path: ").strip()
-            uploader.upload_audio(student_id, audio_path)
-            
-        elif choice == "4":
-            folder_path = input("\nEnter folder path containing images: ").strip()
-            use_gridfs = input("Use GridFS? (yes/no): ").strip().lower() == 'yes'
-            uploader.batch_upload_from_folder(folder_path, use_gridfs)
-            
-        elif choice == "5":
-            student_id = input("\nEnter Student ID: ").strip()
-            save_path = input("Save to (leave blank to auto-save): ").strip()
-            save_path = save_path if save_path else None
-            result = uploader.retrieve_image(student_id, save_path)
-            
-            if result:
-                # Ask if user wants to open the image
-                open_image = input("\nOpen image now? (yes/no): ").strip().lower()
-                if open_image == 'yes':
-                    try:
-                        import os
-                        # Get the saved path
-                        if save_path:
-                            image_path = save_path
-                        else:
-                            student = uploader.student_db.get_student_by_id(student_id)
-                            filename = student.get('image', {}).get('filename', f'{student_id}.jpg')
-                            image_path = os.path.join("retrieved_images", filename)
-                        
-                        # Open with default image viewer
-                        os.startfile(image_path)  # Windows
-                        print(f"✅ Opening image...")
-                    except Exception as e:
-                        print(f"❌ Could not open image: {e}")
-                        print(f"   Please open manually: {image_path}")
-            
-        elif choice == "6":
-            pending = uploader.student_db.get_pending_media_students()
-            print(f"\n⏳ Students waiting for media: {len(pending)}")
-            for i, student in enumerate(pending[:20], 1):
-                waiting = []
-                if student['waiting_for']['image']:
-                    waiting.append("📸 Image")
-                if student['waiting_for']['audio']:
-                    waiting.append("🎤 Audio")
-                print(f"{i}. {student.get('full_name', 'N/A')} ({student['student_id']}) - {', '.join(waiting)}")
-            
-        elif choice == "7":
-            print("\n👋 Goodbye!")
-            break
-        else:
-            print("❌ Invalid option")
-        
-        input("\nPress Enter to continue...")
-    
-    uploader.close()
+        """Closes the database connection."""
+        if self.client:
+            self.client.close()
+            print("\n🔌 Database connection closed.")
 
 
 if __name__ == "__main__":
+    # --- Configuration ---
+    MONGO_CONNECTION_STRING = "mongodb://localhost:27017/"
+    DATABASE_NAME = "school_system"
+    # Add all your student collection names here
+    STUDENT_COLLECTIONS = ["students_ccs", "students_cba", "faculty"] 
+
+    initializer = None
     try:
-        interactive_upload()
-    except KeyboardInterrupt:
-        print("\n\n👋 Exiting...")
+        initializer = DatabaseImageInitializer(
+            MONGO_CONNECTION_STRING, 
+            DATABASE_NAME, 
+            STUDENT_COLLECTIONS
+        )
+        initializer.process_collections()
+        initializer.print_summary()
     except Exception as e:
-        print(f"\n❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"\n❌ An unexpected error occurred: {e}")
+    finally:
+        if initializer:
+            initializer.close()
