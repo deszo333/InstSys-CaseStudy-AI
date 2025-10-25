@@ -14,7 +14,8 @@ const {
   CurriculumManager,
   NonTeachingScheduleManager,
   AdminManager,
-  GeneralInfoManager
+  GeneralInfoManager,
+  TeachingFacultyResumeManager
 } = require('./main');
 const CORExcelExtractor = require('./cor_excel_extractor');
 
@@ -36,6 +37,7 @@ class SchoolInformationSystem {
     this.nonTeachingScheduleExcelFolder = path.join(this.basePath, 'non_teaching_schedules_excel');
     this.adminExcelFolder = path.join(this.basePath, 'admin_excel'); 
     this.generalInfoFolder = path.join(this.basePath, 'general_info');
+    this.teachingFacultyResumesFolder = path.join(this.basePath, 'teaching_faculty_resumes_pdf'); 
     this.curriculumExcelFolder = path.join(this.basePath, 'curriculum_excel');
     this.processedFolder = path.join(this.basePath, 'processed');
     
@@ -49,6 +51,7 @@ class SchoolInformationSystem {
     this.nonTeachingScheduleManager = null;
     this.adminManager = null;
     this.generalInfoManager = null;
+    this.teachingFacultyResumeManager = null;
     this.curriculumManager = null;
     this.queryAssistant = null;
     
@@ -70,6 +73,7 @@ class SchoolInformationSystem {
     console.log(`   Non-Teaching Schedules: ${this.nonTeachingScheduleExcelFolder}`);
     console.log(`   Admin Excel: ${this.adminExcelFolder}`); 
     console.log(`   General Info PDFs: ${this.generalInfoFolder}`);
+    console.log(`   Teaching Faculty Resumes: ${this.teachingFacultyResumesFolder}`); 
     console.log(`   Curriculum Excel: ${this.curriculumExcelFolder}`);
     console.log(`   Processed Files: ${this.processedFolder}`);
   }
@@ -642,6 +646,70 @@ class SchoolInformationSystem {
     }
 
     // ============================================================
+    // STEP 11: Process Teaching Faculty Resume PDF Files
+    // ============================================================
+    try {
+  // Check if folder exists, create if not
+  try {
+    await fs.access(this.teachingFacultyResumesFolder);
+  } catch (err) {
+    console.log('\n👨‍🏫 Teaching Faculty Resumes folder not found, creating...');
+    await fs.mkdir(this.teachingFacultyResumesFolder, { recursive: true });
+  }
+
+  const resumeFiles = await fs.readdir(this.teachingFacultyResumesFolder);
+  const pdfFiles = resumeFiles.filter(file => 
+    file.toLowerCase().endsWith('.pdf')
+  );
+
+  if (pdfFiles.length > 0) {
+    console.log(`\n👨‍🏫 Found ${pdfFiles.length} Teaching Faculty Resume PDF file(s)`);
+    
+    const TeachingFacultyResumeExtractor = require('./teaching_faculty_resume_pdf_extractor');
+    const resumeExtractor = new TeachingFacultyResumeExtractor();
+    //asdasdadas
+    let resumeProcessed = 0;
+    let resumeSkipped = 0;
+    
+    for (const file of pdfFiles) {
+      const filePath = path.join(this.teachingFacultyResumesFolder, file);
+      console.log(`   Processing: ${file}`);
+      
+      try {
+        const resumeData = await resumeExtractor.processTeachingFacultyResumePDF(filePath);
+        
+        if (resumeData) {
+          const result = await this.teachingFacultyResumeManager.storeTeachingFacultyResume(resumeData);
+          
+          if (result) {
+            totalProcessed++;
+            resumeProcessed++;
+            console.log(`   ✅ ${file}`);
+          } else {
+            resumeSkipped++;
+            console.log(`   ❌ ${file} - Failed to store`);
+          }
+        } else {
+          resumeSkipped++;
+          console.log(`   ❌ ${file} - Could not extract data`);
+        }
+      } catch (error) {
+        resumeSkipped++;
+        console.error(`   ❌ ${file} - Error: ${error.message}`);
+      }
+    }
+    
+    if (resumeSkipped > 0) {
+      console.log(`\n   ℹ️  Summary: ${resumeProcessed} processed, ${resumeSkipped} skipped`);
+    }
+  } else {
+    console.log('\n👨‍🏫 No teaching faculty resume PDF files found');
+  }
+} catch (error) {
+  console.error(`\n❌ Error processing teaching faculty resumes: ${error.message}`);
+}
+
+    // ============================================================
     // SUMMARY
     // ============================================================
     console.log('\n' + '='.repeat(60));
@@ -684,6 +752,9 @@ class SchoolInformationSystem {
 
     // Clear general info
     await this.generalInfoManager.clearAllGeneralInfo();
+
+    // Clear teaching resumes
+    await this.teachingFacultyResumeManager.clearAllFacultyResumes();
 
     // Clear curricula
     await this.curriculumManager.clearAllCurricula();
@@ -823,6 +894,10 @@ async clearAllCORSchedules() {
       // Clear general info
       console.log('📄 Clearing general information...');
       await this.generalInfoManager.clearAllGeneralInfo();
+
+      // Clear teaching faculty resumes
+      console.log('👨‍🏫 Clearing teaching faculty resumes...');
+      await this.teachingFacultyResumeManager.clearAllFacultyResumes();
       
       // Clear curricula
       if (this.curriculumManager) {
@@ -2304,6 +2379,76 @@ wrapText(text, maxWidth) {
   return lines.join('\n   ');
 }
 
+  async viewTeachingFacultyResumes() {
+  console.log('\n' + '='.repeat(60));
+  console.log('👨‍🏫 TEACHING FACULTY RESUMES');
+  console.log('='.repeat(60));
+
+  try {
+    const allFaculty = await this.teachingFacultyResumeManager.getAllTeachingFacultyResumes();
+
+    if (allFaculty.length === 0) {
+      console.log('\nNo teaching faculty resumes found in the database.');
+      return;
+    }
+
+    console.log(`\nTotal: ${allFaculty.length} faculty member(s)\n`);
+
+    // Group by department
+    const byDept = {};
+    allFaculty.forEach(faculty => {
+      const dept = faculty.department || 'UNKNOWN';
+      if (!byDept[dept]) {
+        byDept[dept] = [];
+      }
+      byDept[dept].push(faculty);
+    });
+
+    // Display grouped by department
+    for (const [dept, faculty] of Object.entries(byDept).sort()) {
+      console.log(`\n📂 ${dept} (${faculty.length} person(s)):`);
+      console.log('-'.repeat(60));
+
+      faculty.forEach((f, index) => {
+        console.log(`\n  ${index + 1}. ${f.full_name}`);
+        console.log(`     Position: ${f.position || 'N/A'}`);
+        console.log(`     Department: ${f.department}`);
+        console.log(`     Email: ${f.email || 'N/A'}`);
+        console.log(`     Phone: ${f.phone || 'N/A'}`);
+        console.log(`     📸 Has Photo: ${f.has_photo ? 'Yes' : 'No'}`);
+        console.log(`     Faculty ID: ${f.faculty_id}`);
+      });
+    }
+
+    // Show statistics
+    const stats = await this.teachingFacultyResumeManager.getStatistics();
+    if (stats) {
+      console.log('\n' + '='.repeat(60));
+      console.log('📊 STATISTICS:');
+      console.log(`   Total Faculty: ${stats.total_faculty}`);
+      console.log(`   With Photos: ${stats.with_photos}`);
+      console.log(`   Without Photos: ${stats.without_photos}`);
+      
+      if (Object.keys(stats.by_department).length > 0) {
+        console.log('\n   By Department:');
+        Object.entries(stats.by_department).sort().forEach(([dept, count]) => {
+          console.log(`     ${dept}: ${count}`);
+        });
+      }
+      
+      if (Object.keys(stats.by_position).length > 0) {
+        console.log('\n   By Position:');
+        Object.entries(stats.by_position).sort().forEach(([pos, count]) => {
+          console.log(`     ${pos}: ${count}`);
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error(`❌ Error viewing faculty resumes: ${error.message}`);
+  }
+}
+
 
   async mainMenu() {
   while (true) {
@@ -2325,13 +2470,14 @@ wrapText(text, maxWidth) {
     console.log('13. Debug Curriculum File');
     console.log('14. View Non-Teaching Schedules');
     console.log('15. View Administrators');
-    console.log('16. View General Information');  
-    console.log('17. Clear All Data (Manual)');
-    console.log('18. Cleanup Orphaned Collections');
-    console.log('19. Query Assistant');
-    console.log('20. Exit');  
+    console.log('16. View General Information');
+    console.log('17. View Teaching Faculty Resumes'); 
+    console.log('18. Clear All Data (Manual)');
+    console.log('19. Cleanup Orphaned Collections');
+    console.log('20. Query Assistant');
+    console.log('21. Exit'); 
 
-    const choice = (await this.prompt('\nSelect option (1-20): ')).trim();  
+    const choice = (await this.prompt('\nSelect option (1-21): ')).trim();  
 
     try {
       if (choice === '1') {
@@ -2365,18 +2511,21 @@ wrapText(text, maxWidth) {
       } else if (choice === '15') {
         await this.viewAdministrators();
       } else if (choice === '16') {
-        await this.viewGeneralInformation();  // ← ADD THIS
-      } else if (choice === '17') {
+        await this.viewGeneralInformation();  
+      } 
+      else if (choice === '17') {
+      await this.viewTeachingFacultyResumes();}
+      else if (choice === '18') {
         await this.clearAllData();
-      } else if (choice === '18') {
-        await this.cleanupOrphanedCollections();
       } else if (choice === '19') {
+        await this.cleanupOrphanedCollections();
+      } else if (choice === '20') {
         await this.runQueryAssistant();
-      } else if (choice === '20') {  // ← UPDATE NUMBER
+      } else if (choice === '21') {  
         console.log('\n👋 Exiting...');
         break;
       } else {
-        console.log('\n❌ Invalid option. Please select 1-20');  // ← UPDATE RANGE
+        console.log('\n❌ Invalid option. Please select 1-20');  
       }
 
       if (choice !== '19') {
@@ -2480,6 +2629,7 @@ wrapText(text, maxWidth) {
     this.nonTeachingScheduleManager = new NonTeachingScheduleManager(this.db);
     this.adminManager = new AdminManager(this.db);
     this.generalInfoManager = new GeneralInfoManager(this.db);
+    this.teachingFacultyResumeManager = new TeachingFacultyResumeManager(this.db);
     this.curriculumManager = new CurriculumManager(this.db);  
     this.queryAssistant = new QueryAssistant(this.db, this.corManager, this.gradesManager);
 

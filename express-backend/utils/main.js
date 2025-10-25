@@ -2971,6 +2971,283 @@ class GeneralInfoManager {
   }
 }
 
+class TeachingFacultyResumeManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store teaching faculty resume in MongoDB
+   */
+  async storeTeachingFacultyResume(resumeData) {
+    try {
+      const dept = (resumeData.metadata.department || 'UNKNOWN').toLowerCase();
+      
+      // Use teaching_faculty_resume_ prefix to distinguish from Excel data
+      const collection = this.db.db.collection(`teaching_faculty_resume_${dept}`);
+      
+      const facultyDoc = {
+        faculty_id: `FACULTY_RESUME_${resumeData.metadata.surname.replace(/\s+/g, '_').toUpperCase()}_${Date.now()}`,
+        full_name: resumeData.metadata.full_name,
+        surname: resumeData.metadata.surname,
+        first_name: resumeData.metadata.first_name,
+        middle_name: resumeData.metadata.middle_name,
+        
+        // Professional Info
+        department: resumeData.metadata.department,
+        position: resumeData.metadata.position,
+        email: resumeData.metadata.email,
+        phone: resumeData.metadata.phone,
+        
+        // Full faculty data
+        faculty_info: resumeData.faculty_data,
+        
+        // Photo data (if available)
+        has_photo: resumeData.metadata.has_photo,
+        photo: resumeData.photo_data ? {
+          buffer: resumeData.photo_data.buffer,
+          extension: resumeData.photo_data.extension,
+          size: resumeData.photo_data.size,
+          filename: resumeData.photo_data.filename
+        } : null,
+        
+        // Raw and formatted text
+        raw_text: resumeData.raw_text,
+        formatted_text: resumeData.formatted_text,
+        
+        // Metadata
+        source_file: resumeData.metadata.source_file,
+        data_type: 'teaching_faculty_resume_pdf',
+        extracted_at: resumeData.metadata.extracted_at,
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      
+      // Insert the document
+      const result = await collection.insertOne(facultyDoc);
+      
+      console.log(`✅ Faculty resume stored in: teaching_faculty_resume_${dept}`);
+      console.log(`   Faculty ID: ${facultyDoc.faculty_id}`);
+      console.log(`   Name: ${facultyDoc.full_name}`);
+      console.log(`   Has Photo: ${facultyDoc.has_photo ? 'Yes' : 'No'}`);
+      console.log(`   MongoDB _id: ${result.insertedId}`);
+      
+      return facultyDoc.faculty_id;
+      
+    } catch (error) {
+      console.error(`❌ Error storing faculty resume: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all teaching faculty resumes
+   */
+  async getAllTeachingFacultyResumes() {
+    try {
+      const database = this.db.db || this.db.client.db();
+      const collections = await database.listCollections().toArray();
+      
+      const allFaculty = [];
+      
+      for (const collectionInfo of collections) {
+        const collectionName = collectionInfo.name;
+        
+        if (collectionName.startsWith('teaching_faculty_resume_')) {
+          try {
+            const collection = database.collection(collectionName);
+            const faculty = await collection.find({ data_type: 'teaching_faculty_resume_pdf' }).toArray();
+            allFaculty.push(...faculty);
+          } catch {
+            continue;
+          }
+        }
+      }
+
+      return allFaculty;
+    } catch (error) {
+      console.error(`❌ Error getting faculty resumes: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get faculty resumes by department
+   */
+  async getFacultyResumesByDepartment(department) {
+    try {
+      const dept = department.toLowerCase();
+      const collection = this.db.db.collection(`teaching_faculty_resume_${dept}`);
+      return await collection.find({ data_type: 'teaching_faculty_resume_pdf' }).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting faculty resumes: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Search faculty by name
+   */
+  async searchFacultyByName(name) {
+    try {
+      const allFaculty = await this.getAllTeachingFacultyResumes();
+      return allFaculty.filter(faculty => 
+        faculty.full_name.toLowerCase().includes(name.toLowerCase())
+      );
+    } catch (error) {
+      console.error(`❌ Error searching faculty: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get faculty with photos
+   */
+  async getFacultyWithPhotos() {
+    try {
+      const allFaculty = await this.getAllTeachingFacultyResumes();
+      return allFaculty.filter(faculty => faculty.has_photo);
+    } catch (error) {
+      console.error(`❌ Error getting faculty with photos: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get faculty photo
+   */
+  async getFacultyPhoto(facultyId) {
+    try {
+      const allFaculty = await this.getAllTeachingFacultyResumes();
+      const faculty = allFaculty.find(f => f.faculty_id === facultyId);
+      
+      if (faculty && faculty.photo) {
+        return faculty.photo;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`❌ Error getting faculty photo: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get statistics
+   */
+  async getStatistics() {
+    try {
+      const allFaculty = await this.getAllTeachingFacultyResumes();
+      
+      const stats = {
+        total_faculty: allFaculty.length,
+        by_department: {},
+        with_photos: 0,
+        without_photos: 0,
+        by_position: {}
+      };
+
+      allFaculty.forEach(faculty => {
+        // By department
+        const dept = faculty.department || 'UNKNOWN';
+        stats.by_department[dept] = (stats.by_department[dept] || 0) + 1;
+
+        // Photos
+        if (faculty.has_photo) {
+          stats.with_photos++;
+        } else {
+          stats.without_photos++;
+        }
+
+        // By position
+        const position = faculty.position || 'Unknown';
+        stats.by_position[position] = (stats.by_position[position] || 0) + 1;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all faculty resumes
+   */
+  async clearAllFacultyResumes() {
+    try {
+      console.log('🔍 Searching for teaching faculty resume collections...');
+      
+      const database = this.db.db || this.db.client.db();
+      const collections = await database.listCollections().toArray();
+      
+      let totalCleared = 0;
+      let collectionsFound = 0;
+
+      for (const collectionInfo of collections) {
+        const collectionName = collectionInfo.name;
+        
+        if (collectionName.startsWith('teaching_faculty_resume_')) {
+          collectionsFound++;
+          console.log(`   🔍 Found collection: ${collectionName}`);
+          
+          try {
+            const collection = database.collection(collectionName);
+            const count = await collection.countDocuments();
+            console.log(`      Documents in collection: ${count}`);
+            
+            if (count > 0) {
+              const result = await collection.deleteMany({});
+              console.log(`   ✅ Cleared ${result.deletedCount} faculty resume(s) from ${collectionName}`);
+              totalCleared += result.deletedCount;
+            } else {
+              console.log(`   ℹ️  ${collectionName} is already empty`);
+            }
+          } catch (error) {
+            console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
+            continue;
+          }
+        }
+      }
+
+      if (collectionsFound === 0) {
+        console.log('ℹ️  No teaching faculty resume collections found');
+      } else if (totalCleared > 0) {
+        console.log(`✅ Total faculty resumes cleared: ${totalCleared} from ${collectionsFound} collection(s)`);
+      } else {
+        console.log(`ℹ️  Found ${collectionsFound} collection(s) but they were already empty`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error clearing faculty resumes: ${error.message}`);
+    }
+  }
+
+  /**
+   * Export photo to file
+   */
+  async exportPhotoToFile(facultyId, outputPath) {
+    try {
+      const photo = await this.getFacultyPhoto(facultyId);
+      
+      if (!photo) {
+        console.log('❌ No photo found for this faculty');
+        return false;
+      }
+      // asdasda
+      const fs = require('fs').promises;
+      await fs.writeFile(outputPath, photo.buffer);
+      
+      console.log(`✅ Photo exported to: ${outputPath}`);
+      return true;
+      
+    } catch (error) {
+      console.error(`❌ Error exporting photo: ${error.message}`);
+      return false;
+    }
+  }
+}
+
 module.exports = { 
   StudentDatabase, 
   StudentDataExtractor, 
@@ -2983,6 +3260,7 @@ module.exports = {
   NonTeachingScheduleManager,
   AdminManager,
   GeneralInfoManager, 
+  TeachingFacultyResumeManager,
   FieldStatus, 
   MediaDefaults 
 };
