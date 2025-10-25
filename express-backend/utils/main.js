@@ -1012,11 +1012,1977 @@ class StudentGradesManager {
   }
 }
 
+class TeachingFacultyManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store teaching faculty in department-specific collection
+   */
+  async storeTeachingFaculty(facultyData) {
+  try {
+    const dept = (facultyData.metadata.department || 'UNKNOWN').toLowerCase();
+    
+    // Get the faculty collection for this department
+    const collection = this.db.db.collection(`faculty_${dept}`);
+    
+    const facultyDoc = {
+      // Identification
+      faculty_id: `FACULTY_${facultyData.metadata.department}_${Date.now()}`,
+      full_name: facultyData.metadata.full_name,
+      surname: facultyData.metadata.surname,
+      first_name: facultyData.metadata.first_name,
+      
+      // Personal Information
+      date_of_birth: facultyData.faculty_info.date_of_birth,
+      place_of_birth: facultyData.faculty_info.place_of_birth,
+      citizenship: facultyData.faculty_info.citizenship,
+      sex: facultyData.faculty_info.sex,
+      height: facultyData.faculty_info.height,
+      weight: facultyData.faculty_info.weight,
+      blood_type: facultyData.faculty_info.blood_type,
+      religion: facultyData.faculty_info.religion,
+      civil_status: facultyData.faculty_info.civil_status,
+      
+      // Contact Information
+      address: facultyData.faculty_info.address,
+      zip_code: facultyData.faculty_info.zip_code,
+      phone: facultyData.faculty_info.phone,
+      email: facultyData.faculty_info.email,
+      
+      // Professional Information
+      position: facultyData.metadata.position,
+      department: facultyData.metadata.department,
+      employment_status: facultyData.metadata.employment_status,
+      
+      // ← ADD THIS: Biometric descriptor
+      descriptor: facultyData.faculty_info.descriptor || null,
+      
+      // ← ADD THIS: Media fields (image and audio)
+      image: {
+        data: null,
+        filename: null,
+        status: 'waiting'  // waiting for upload
+      },
+      audio: {
+        data: null,
+        filename: null,
+        status: 'waiting'  // waiting for upload
+      },
+      
+      // Family Information
+      family_info: {
+        father: {
+          name: facultyData.faculty_info.father_name,
+          date_of_birth: facultyData.faculty_info.father_dob,
+          occupation: facultyData.faculty_info.father_occupation
+        },
+        mother: {
+          name: facultyData.faculty_info.mother_name,
+          date_of_birth: facultyData.faculty_info.mother_dob,
+          occupation: facultyData.faculty_info.mother_occupation
+        },
+        spouse: {
+          name: facultyData.faculty_info.spouse_name,
+          date_of_birth: facultyData.faculty_info.spouse_dob,
+          occupation: facultyData.faculty_info.spouse_occupation
+        }
+      },
+      
+      // Government IDs
+      government_ids: {
+        gsis: facultyData.faculty_info.gsis,
+        philhealth: facultyData.faculty_info.philhealth
+      },
+      
+      // Field status tracking
+      field_status: {
+        personal_info: 'complete',
+        contact_info: 'complete',
+        professional_info: 'complete',
+        image: 'waiting',
+        audio: 'waiting',
+        descriptor: facultyData.faculty_info.descriptor ? 'complete' : 'waiting'
+      },
+      
+      // Completion percentage
+      completion_percentage: this._calculateTeachingFacultyCompletion(facultyData),
+      
+      // Full formatted text for display
+      formatted_text: facultyData.formatted_text,
+      
+      // Metadata
+      source_file: facultyData.metadata.source_file,
+      data_type: 'teaching_faculty',
+      faculty_type: 'teaching',
+      created_at: facultyData.metadata.created_at,
+      updated_at: new Date()
+    };
+    
+    // Insert the document
+    const result = await collection.insertOne(facultyDoc);
+    
+    // ← ADD THIS: Add to pending media if waiting for image/audio
+    await this._addTeachingToPendingMedia(facultyDoc);
+    
+    console.log(`✅ Teaching faculty stored in: faculty_${dept}`);
+    console.log(`   Faculty ID: ${facultyDoc.faculty_id}`);
+    console.log(`   Completion: ${facultyDoc.completion_percentage.toFixed(1)}%`);
+    console.log(`   MongoDB _id: ${result.insertedId}`);
+    
+    return facultyDoc.faculty_id;
+    
+  } catch (error) {
+    console.error(`❌ Error storing teaching faculty: ${error.message}`);
+    return null;
+  }
+}
+
+  /**
+ * Calculate completion percentage for teaching faculty
+ */
+_calculateTeachingFacultyCompletion(facultyData) {
+  const totalFields = 9; // personal + contact + professional + image + audio + descriptor
+  let completed = 0;
+
+  // Personal info (if has surname and first name)
+  if (facultyData.faculty_info.surname && facultyData.faculty_info.first_name) {
+    completed++;
+  }
+
+  // Contact info (if has phone or email)
+  if (facultyData.faculty_info.phone || facultyData.faculty_info.email) {
+    completed++;
+  }
+
+  // Professional info (if has position and department)
+  if (facultyData.metadata.position && facultyData.metadata.department) {
+    completed++;
+  }
+
+  // Address
+  if (facultyData.faculty_info.address) {
+    completed++;
+  }
+
+  // GSIS or PhilHealth
+  if (facultyData.faculty_info.gsis || facultyData.faculty_info.philhealth) {
+    completed++;
+  }
+
+  // Civil Status
+  if (facultyData.faculty_info.civil_status) {
+    completed++;
+  }
+
+  // Image (not yet uploaded, so doesn't count)
+  // Audio (not yet uploaded, so doesn't count)
+  // Descriptor (check if exists)
+  if (facultyData.faculty_info.descriptor) {
+    completed++;
+  }
+
+  return (completed / totalFields) * 100;
+}
+
+/**
+ * Add teaching faculty to pending media collection
+ */
+async _addTeachingToPendingMedia(facultyDoc) {
+  try {
+    const pendingDoc = {
+      faculty_id: facultyDoc.faculty_id,
+      full_name: facultyDoc.full_name,
+      position: facultyDoc.position,
+      department: facultyDoc.department,
+      faculty_type: 'teaching',
+      waiting_for: {
+        image: facultyDoc.image.status === 'waiting',
+        audio: facultyDoc.audio.status === 'waiting',
+        descriptor: !facultyDoc.descriptor
+      },
+      added_at: new Date()
+    };
+
+    await this.db.db.collection('pending_media').updateOne(
+      { faculty_id: facultyDoc.faculty_id },
+      { $set: pendingDoc },
+      { upsert: true }
+    );
+
+    console.log(`   📝 Added to pending media queue`);
+  } catch (error) {
+    console.error(`   ⚠️  Error adding to pending media: ${error.message}`);
+  }
+}
+
+/**
+ * Update teaching faculty media (image or audio)
+ */
+async updateTeachingMedia(facultyId, mediaType, mediaData, filename, department) {
+  try {
+    const dept = department.toLowerCase();
+    const collection = this.db.db.collection(`faculty_${dept}`);
+
+    const updateData = {
+      [`${mediaType}.data`]: mediaData,
+      [`${mediaType}.filename`]: filename,
+      [`${mediaType}.status`]: 'complete',
+      [`field_status.${mediaType}`]: 'complete',
+      updated_at: new Date()
+    };
+
+    const result = await collection.updateOne(
+      { faculty_id: facultyId },
+      { $set: updateData }
+    );
+
+    if (result.modifiedCount > 0) {
+      await this._updateTeachingCompletion(facultyId, department);
+      await this._checkTeachingMediaComplete(facultyId, department);
+      console.log(`✅ Updated ${mediaType} for teaching faculty ${facultyId}`);
+      return true;
+    } else {
+      console.log(`⚠️  Teaching faculty ${facultyId} not found`);
+      return false;
+    }
+
+  } catch (error) {
+    console.error(`❌ Error updating teaching media: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Update teaching faculty descriptor
+ */
+async updateTeachingDescriptor(facultyId, descriptor, department) {
+  try {
+    const dept = department.toLowerCase();
+    const collection = this.db.db.collection(`faculty_${dept}`);
+
+    const result = await collection.updateOne(
+      { faculty_id: facultyId },
+      { 
+        $set: { 
+          descriptor: descriptor,
+          'field_status.descriptor': 'complete',
+          updated_at: new Date()
+        } 
+      }
+    );
+
+    if (result.modifiedCount > 0) {
+      await this._updateTeachingCompletion(facultyId, department);
+      console.log(`✅ Updated descriptor for teaching faculty ${facultyId}`);
+      return true;
+    } else {
+      console.log(`⚠️  Teaching faculty ${facultyId} not found`);
+      return false;
+    }
+
+  } catch (error) {
+    console.error(`❌ Error updating teaching descriptor: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Update completion percentage for teaching faculty
+ */
+async _updateTeachingCompletion(facultyId, department) {
+  try {
+    const dept = department.toLowerCase();
+    const collection = this.db.db.collection(`faculty_${dept}`);
+    const faculty = await collection.findOne({ faculty_id: facultyId });
+    
+    if (!faculty) return;
+
+    const totalFields = 9;
+    let completed = 0;
+
+    // Check each field
+    if (faculty.surname && faculty.first_name) completed++;
+    if (faculty.phone || faculty.email) completed++;
+    if (faculty.position && faculty.department) completed++;
+    if (faculty.address) completed++;
+    if (faculty.government_ids?.gsis || faculty.government_ids?.philhealth) completed++;
+    if (faculty.civil_status) completed++;
+    if (faculty.image?.status === 'complete') completed++;
+    if (faculty.audio?.status === 'complete') completed++;
+    if (faculty.descriptor) completed++;
+
+    const completion = (completed / totalFields) * 100;
+
+    await collection.updateOne(
+      { faculty_id: facultyId },
+      { $set: { completion_percentage: completion } }
+    );
+  } catch (error) {
+    console.error(`❌ Error updating teaching completion: ${error.message}`);
+  }
+}
+
+/**
+ * Check if teaching faculty media is complete and remove from pending
+ */
+async _checkTeachingMediaComplete(facultyId, department) {
+  try {
+    const dept = department.toLowerCase();
+    const collection = this.db.db.collection(`faculty_${dept}`);
+    const faculty = await collection.findOne({ faculty_id: facultyId });
+    
+    if (!faculty) return;
+
+    const imageComplete = faculty.image?.status === 'complete';
+    const audioComplete = faculty.audio?.status === 'complete';
+    const descriptorComplete = !!faculty.descriptor;
+
+    if (imageComplete && audioComplete && descriptorComplete) {
+      await this.db.db.collection('pending_media').deleteOne({ faculty_id: facultyId });
+      console.log(`   🎉 Teaching faculty ${facultyId} completed all media requirements`);
+    }
+  } catch (error) {
+    console.error(`❌ Error checking teaching media completion: ${error.message}`);
+  }
+}
+
+/**
+ * Get teaching faculty pending media
+ */
+async getTeachingPendingMedia() {
+  try {
+    return await this.db.db.collection('pending_media').find({ 
+      faculty_type: 'teaching' 
+    }).toArray();
+  } catch (error) {
+    console.error(`❌ Error getting teaching pending media: ${error.message}`);
+    return [];
+  }
+}
+
+  /**
+   * Get all teaching faculty from all departments
+   */
+  async getAllTeachingFaculty() {
+    try {
+      const departments = ['cas', 'ccs', 'chtm', 'cba', 'cte', 'coe', 'con', 'admin', 'unknown'];
+      const allFaculty = [];
+
+      for (const dept of departments) {
+        try {
+          const collection = this.db.db.collection(`faculty_${dept}`);
+          const faculty = await collection.find({ data_type: 'teaching_faculty' }).toArray();
+          allFaculty.push(...faculty);
+        } catch {
+          // Collection might not exist yet
+          continue;
+        }
+      }
+
+      return allFaculty;
+    } catch (error) {
+      console.error(`❌ Error getting all teaching faculty: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get teaching faculty by department
+   */
+  async getTeachingFacultyByDepartment(department) {
+    try {
+      const dept = department.toLowerCase();
+      const collection = this.db.db.collection(`faculty_${dept}`);
+      return await collection.find({ data_type: 'teaching_faculty' }).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting teaching faculty: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get teaching faculty statistics
+   */
+  async getTeachingFacultyStatistics() {
+    try {
+      const allFaculty = await this.getAllTeachingFaculty();
+      
+      const stats = {
+        total_faculty: allFaculty.length,
+        by_department: {},
+        by_position: {},
+        by_employment_status: {}
+      };
+
+      allFaculty.forEach(faculty => {
+        // By department
+        const dept = faculty.department || 'UNKNOWN';
+        stats.by_department[dept] = (stats.by_department[dept] || 0) + 1;
+
+        // By position
+        const position = faculty.position || 'UNKNOWN';
+        stats.by_position[position] = (stats.by_position[position] || 0) + 1;
+
+        // By employment status
+        const status = faculty.employment_status || 'UNKNOWN';
+        stats.by_employment_status[status] = (stats.by_employment_status[status] || 0) + 1;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting teaching faculty statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all teaching faculty
+   */
+  async clearAllTeachingFaculty() {
+    try {
+      const departments = ['cas', 'ccs', 'chtm', 'cba', 'cte', 'coe', 'con', 'admin', 'unknown'];
+      let totalCleared = 0;
+
+      for (const dept of departments) {
+        try {
+          const collection = this.db.db.collection(`faculty_${dept}`);
+          const result = await collection.deleteMany({ data_type: 'teaching_faculty' });
+          
+          if (result.deletedCount > 0) {
+            console.log(`   Cleared ${result.deletedCount} faculty record(s) from faculty_${dept}`);
+            totalCleared += result.deletedCount;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (totalCleared > 0) {
+        console.log(`✅ Total teaching faculty records cleared: ${totalCleared}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error clearing teaching faculty: ${error.message}`);
+    }
+  }
+}
+
+class TeachingFacultyScheduleManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store teaching faculty schedule in department-specific collection
+   */
+  async storeTeachingFacultySchedule(scheduleData) {
+    try {
+      const dept = (scheduleData.metadata.department || 'UNKNOWN').toLowerCase();
+      
+      // Get the faculty schedule collection for this department
+      const collection = this.db.db.collection(`faculty_schedules_${dept}`);
+      
+      const scheduleDoc = {
+        // Identification
+        schedule_id: `FACULTY_SCHED_${scheduleData.metadata.department}_${Date.now()}`,
+        adviser_name: scheduleData.metadata.adviser_name,
+        full_name: scheduleData.metadata.full_name,
+        department: scheduleData.metadata.department,
+        
+        // Schedule Summary
+        total_subjects: scheduleData.metadata.total_subjects,
+        days_teaching: scheduleData.metadata.days_teaching,
+        
+        // Detailed Schedule (array of classes)
+        schedule: scheduleData.schedule_info.schedule,
+        
+        // Full formatted text
+        formatted_text: scheduleData.formatted_text,
+        
+        // Metadata
+        source_file: scheduleData.metadata.source_file,
+        data_type: 'teaching_faculty_schedule',
+        faculty_type: 'schedule',
+        created_at: scheduleData.metadata.created_at,
+        updated_at: new Date()
+      };
+      
+      // Insert the document
+      const result = await collection.insertOne(scheduleDoc);
+      
+      console.log(`✅ Teaching faculty schedule stored in: faculty_schedules_${dept}`);
+      console.log(`   Schedule ID: ${scheduleDoc.schedule_id}`);
+      console.log(`   MongoDB _id: ${result.insertedId}`);
+      
+      return scheduleDoc.schedule_id;
+      
+    } catch (error) {
+      console.error(`❌ Error storing teaching faculty schedule: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all teaching faculty schedules from all departments
+   */
+  async getAllTeachingFacultySchedules() {
+    try {
+      const departments = ['cas', 'ccs', 'chtm', 'cba', 'cte', 'coe', 'con', 'admin', 'unknown'];
+      const allSchedules = [];
+
+      for (const dept of departments) {
+        try {
+          const collection = this.db.db.collection(`faculty_schedules_${dept}`);
+          const schedules = await collection.find({ data_type: 'teaching_faculty_schedule' }).toArray();
+          allSchedules.push(...schedules);
+        } catch {
+          // Collection might not exist yet
+          continue;
+        }
+      }
+
+      return allSchedules;
+    } catch (error) {
+      console.error(`❌ Error getting all teaching faculty schedules: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get teaching faculty schedules by department
+   */
+  async getTeachingFacultySchedulesByDepartment(department) {
+    try {
+      const dept = department.toLowerCase();
+      const collection = this.db.db.collection(`faculty_schedules_${dept}`);
+      return await collection.find({ data_type: 'teaching_faculty_schedule' }).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting teaching faculty schedules: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get teaching faculty schedule statistics
+   */
+  async getTeachingFacultyScheduleStatistics() {
+    try {
+      const allSchedules = await this.getAllTeachingFacultySchedules();
+      
+      const stats = {
+        total_schedules: allSchedules.length,
+        total_faculty: allSchedules.length,
+        total_classes: 0,
+        by_department: {},
+        by_days_teaching: {}
+      };
+
+      allSchedules.forEach(schedule => {
+        // By department
+        const dept = schedule.department || 'UNKNOWN';
+        stats.by_department[dept] = (stats.by_department[dept] || 0) + 1;
+
+        // Total classes
+        stats.total_classes += schedule.total_subjects || 0;
+
+        // By days teaching
+        const days = schedule.days_teaching || 0;
+        stats.by_days_teaching[days] = (stats.by_days_teaching[days] || 0) + 1;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting teaching faculty schedule statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all teaching faculty schedules
+   */
+  async clearAllTeachingFacultySchedules() {
+    try {
+      // Get ALL collections in the database
+      const collections = await this.db.db.listCollections().toArray();
+      
+      let totalCleared = 0;
+
+      // Find all collections that start with 'faculty_schedules_'
+      for (const collectionInfo of collections) {
+        const collectionName = collectionInfo.name;
+        
+        // Check if this is a faculty schedule collection
+        if (collectionName.startsWith('faculty_schedules_')) {
+          try {
+            const collection = this.db.db.collection(collectionName);
+            const result = await collection.deleteMany({ data_type: 'teaching_faculty_schedule' });
+            
+            if (result.deletedCount > 0) {
+              console.log(`   Cleared ${result.deletedCount} faculty schedule(s) from ${collectionName}`);
+              totalCleared += result.deletedCount;
+            }
+          } catch (error) {
+            console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
+            continue;
+          }
+        }
+      }
+
+      if (totalCleared > 0) {
+        console.log(`✅ Total teaching faculty schedules cleared: ${totalCleared}`);
+      } else {
+        console.log('ℹ️  No teaching faculty schedules to clear');
+      }
+    } catch (error) {
+      console.error(`❌ Error clearing teaching faculty schedules: ${error.message}`);
+    }
+  }
+}
+
+class NonTeachingFacultyManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store non-teaching faculty in department-specific collection
+   */
+  async storeNonTeachingFaculty(facultyData) {
+  try {
+    const dept = (facultyData.metadata.department || 'ADMIN_SUPPORT').toLowerCase();
+    
+    // Get the non-teaching faculty collection for this department
+    const collection = this.db.db.collection(`non_teaching_faculty_${dept}`);
+    
+    const facultyDoc = {
+      // Identification
+      faculty_id: `NON_TEACHING_${facultyData.metadata.department}_${Date.now()}`,
+      full_name: facultyData.metadata.full_name,
+      surname: facultyData.metadata.surname,
+      first_name: facultyData.metadata.first_name,
+      
+      // Personal Information
+      date_of_birth: facultyData.faculty_info.date_of_birth,
+      place_of_birth: facultyData.faculty_info.place_of_birth,
+      citizenship: facultyData.faculty_info.citizenship,
+      sex: facultyData.faculty_info.sex,
+      height: facultyData.faculty_info.height,
+      weight: facultyData.faculty_info.weight,
+      blood_type: facultyData.faculty_info.blood_type,
+      religion: facultyData.faculty_info.religion,
+      civil_status: facultyData.faculty_info.civil_status,
+      
+      // Contact Information
+      address: facultyData.faculty_info.address,
+      zip_code: facultyData.faculty_info.zip_code,
+      phone: facultyData.faculty_info.phone,
+      email: facultyData.faculty_info.email,
+      
+      // Professional Information
+      position: facultyData.metadata.position,
+      department: facultyData.metadata.department,
+      employment_status: facultyData.metadata.employment_status,
+      
+      // ← ADD THIS: Biometric descriptor
+      descriptor: facultyData.faculty_info.descriptor || null,
+      
+      // ← ADD THIS: Media fields (image and audio)
+      image: {
+        data: null,
+        filename: null,
+        status: 'waiting'  // waiting for upload
+      },
+      audio: {
+        data: null,
+        filename: null,
+        status: 'waiting'  // waiting for upload
+      },
+      
+      // Family Information
+      family_info: {
+        father: {
+          name: facultyData.faculty_info.father_name,
+          date_of_birth: facultyData.faculty_info.father_dob,
+          occupation: facultyData.faculty_info.father_occupation
+        },
+        mother: {
+          name: facultyData.faculty_info.mother_name,
+          date_of_birth: facultyData.faculty_info.mother_dob,
+          occupation: facultyData.faculty_info.mother_occupation
+        },
+        spouse: {
+          name: facultyData.faculty_info.spouse_name,
+          date_of_birth: facultyData.faculty_info.spouse_dob,
+          occupation: facultyData.faculty_info.spouse_occupation
+        }
+      },
+      
+      // Government IDs
+      government_ids: {
+        gsis: facultyData.faculty_info.gsis,
+        philhealth: facultyData.faculty_info.philhealth
+      },
+      
+      //Field status tracking
+      field_status: {
+        personal_info: 'complete',
+        contact_info: 'complete',
+        professional_info: 'complete',
+        image: 'waiting',
+        audio: 'waiting',
+        descriptor: facultyData.faculty_info.descriptor ? 'complete' : 'waiting'
+      },
+      
+      // Completion percentage
+      completion_percentage: this._calculateNonTeachingFacultyCompletion(facultyData),
+      
+      // Full formatted text for display
+      formatted_text: facultyData.formatted_text,
+      
+      // Metadata
+      source_file: facultyData.metadata.source_file,
+      data_type: 'non_teaching_faculty',
+      faculty_type: 'non_teaching',
+      created_at: facultyData.metadata.created_at,
+      updated_at: new Date()
+    };
+    
+    // Insert the document
+    const result = await collection.insertOne(facultyDoc);
+    
+    // ← ADD THIS: Add to pending media if waiting for image/audio
+    await this._addNonTeachingToPendingMedia(facultyDoc);
+    
+    console.log(`✅ Non-teaching faculty stored in: non_teaching_faculty_${dept}`);
+    console.log(`   Faculty ID: ${facultyDoc.faculty_id}`);
+    console.log(`   Completion: ${facultyDoc.completion_percentage.toFixed(1)}%`);
+    console.log(`   MongoDB _id: ${result.insertedId}`);
+    
+    return facultyDoc.faculty_id;
+    
+  } catch (error) {
+    console.error(`❌ Error storing non-teaching faculty: ${error.message}`);
+    return null;
+  }
+}
+
+  /**
+ * Calculate completion percentage for non-teaching faculty
+ */
+_calculateNonTeachingFacultyCompletion(facultyData) {
+  const totalFields = 9; // personal + contact + professional + image + audio + descriptor
+  let completed = 0;
+
+  // Personal info (if has surname and first name)
+  if (facultyData.faculty_info.surname && facultyData.faculty_info.first_name) {
+    completed++;
+  }
+
+  // Contact info (if has phone or email)
+  if (facultyData.faculty_info.phone || facultyData.faculty_info.email) {
+    completed++;
+  }
+
+  // Professional info (if has position and department)
+  if (facultyData.metadata.position && facultyData.metadata.department) {
+    completed++;
+  }
+
+  // Address
+  if (facultyData.faculty_info.address) {
+    completed++;
+  }
+
+  // GSIS or PhilHealth
+  if (facultyData.faculty_info.gsis || facultyData.faculty_info.philhealth) {
+    completed++;
+  }
+
+  // Civil Status
+  if (facultyData.faculty_info.civil_status) {
+    completed++;
+  }
+
+  // Image (not yet uploaded, so doesn't count)
+  // Audio (not yet uploaded, so doesn't count)
+  // Descriptor (check if exists)
+  if (facultyData.faculty_info.descriptor) {
+    completed++;
+  }
+
+  return (completed / totalFields) * 100;
+}
+
+/**
+ * Add non-teaching faculty to pending media collection
+ */
+async _addNonTeachingToPendingMedia(facultyDoc) {
+  try {
+    const pendingDoc = {
+      faculty_id: facultyDoc.faculty_id,
+      full_name: facultyDoc.full_name,
+      position: facultyDoc.position,
+      department: facultyDoc.department,
+      faculty_type: 'non_teaching',
+      waiting_for: {
+        image: facultyDoc.image.status === 'waiting',
+        audio: facultyDoc.audio.status === 'waiting',
+        descriptor: !facultyDoc.descriptor
+      },
+      added_at: new Date()
+    };
+
+    await this.db.db.collection('pending_media').updateOne(
+      { faculty_id: facultyDoc.faculty_id },
+      { $set: pendingDoc },
+      { upsert: true }
+    );
+
+    console.log(`   📝 Added to pending media queue`);
+  } catch (error) {
+    console.error(`   ⚠️  Error adding to pending media: ${error.message}`);
+  }
+}
+
+/**
+ * Update non-teaching faculty media (image or audio)
+ */
+async updateNonTeachingMedia(facultyId, mediaType, mediaData, filename, department) {
+  try {
+    const dept = department.toLowerCase();
+    const collection = this.db.db.collection(`non_teaching_faculty_${dept}`);
+
+    const updateData = {
+      [`${mediaType}.data`]: mediaData,
+      [`${mediaType}.filename`]: filename,
+      [`${mediaType}.status`]: 'complete',
+      [`field_status.${mediaType}`]: 'complete',
+      updated_at: new Date()
+    };
+
+    const result = await collection.updateOne(
+      { faculty_id: facultyId },
+      { $set: updateData }
+    );
+
+    if (result.modifiedCount > 0) {
+      await this._updateNonTeachingCompletion(facultyId, department);
+      await this._checkNonTeachingMediaComplete(facultyId, department);
+      console.log(`✅ Updated ${mediaType} for non-teaching faculty ${facultyId}`);
+      return true;
+    } else {
+      console.log(`⚠️  Non-teaching faculty ${facultyId} not found`);
+      return false;
+    }
+
+  } catch (error) {
+    console.error(`❌ Error updating non-teaching media: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Update non-teaching faculty descriptor
+ */
+async updateNonTeachingDescriptor(facultyId, descriptor, department) {
+  try {
+    const dept = department.toLowerCase();
+    const collection = this.db.db.collection(`non_teaching_faculty_${dept}`);
+
+    const result = await collection.updateOne(
+      { faculty_id: facultyId },
+      { 
+        $set: { 
+          descriptor: descriptor,
+          'field_status.descriptor': 'complete',
+          updated_at: new Date()
+        } 
+      }
+    );
+
+    if (result.modifiedCount > 0) {
+      await this._updateNonTeachingCompletion(facultyId, department);
+      console.log(`✅ Updated descriptor for non-teaching faculty ${facultyId}`);
+      return true;
+    } else {
+      console.log(`⚠️  Non-teaching faculty ${facultyId} not found`);
+      return false;
+    }
+
+  } catch (error) {
+    console.error(`❌ Error updating non-teaching descriptor: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Update completion percentage for non-teaching faculty
+ */
+async _updateNonTeachingCompletion(facultyId, department) {
+  try {
+    const dept = department.toLowerCase();
+    const collection = this.db.db.collection(`non_teaching_faculty_${dept}`);
+    const faculty = await collection.findOne({ faculty_id: facultyId });
+    
+    if (!faculty) return;
+
+    const totalFields = 9;
+    let completed = 0;
+
+    // Check each field
+    if (faculty.surname && faculty.first_name) completed++;
+    if (faculty.phone || faculty.email) completed++;
+    if (faculty.position && faculty.department) completed++;
+    if (faculty.address) completed++;
+    if (faculty.government_ids?.gsis || faculty.government_ids?.philhealth) completed++;
+    if (faculty.civil_status) completed++;
+    if (faculty.image?.status === 'complete') completed++;
+    if (faculty.audio?.status === 'complete') completed++;
+    if (faculty.descriptor) completed++;
+
+    const completion = (completed / totalFields) * 100;
+
+    await collection.updateOne(
+      { faculty_id: facultyId },
+      { $set: { completion_percentage: completion } }
+    );
+  } catch (error) {
+    console.error(`❌ Error updating non-teaching completion: ${error.message}`);
+  }
+}
+
+/**
+ * Check if non-teaching faculty media is complete and remove from pending
+ */
+async _checkNonTeachingMediaComplete(facultyId, department) {
+  try {
+    const dept = department.toLowerCase();
+    const collection = this.db.db.collection(`non_teaching_faculty_${dept}`);
+    const faculty = await collection.findOne({ faculty_id: facultyId });
+    
+    if (!faculty) return;
+
+    const imageComplete = faculty.image?.status === 'complete';
+    const audioComplete = faculty.audio?.status === 'complete';
+    const descriptorComplete = !!faculty.descriptor;
+
+    if (imageComplete && audioComplete && descriptorComplete) {
+      await this.db.db.collection('pending_media').deleteOne({ faculty_id: facultyId });
+      console.log(`   🎉 Non-teaching faculty ${facultyId} completed all media requirements`);
+    }
+  } catch (error) {
+    console.error(`❌ Error checking non-teaching media completion: ${error.message}`);
+  }
+}
+
+/**
+ * Get non-teaching faculty pending media
+ */
+async getNonTeachingPendingMedia() {
+  try {
+    return await this.db.db.collection('pending_media').find({ 
+      faculty_type: 'non_teaching' 
+    }).toArray();
+  } catch (error) {
+    console.error(`❌ Error getting non-teaching pending media: ${error.message}`);
+    return [];
+  }
+}
+
+  /**
+   * Get all non-teaching faculty from all departments
+   */
+  async getAllNonTeachingFaculty() {
+    try {
+      const departments = [
+        'registrar', 'accounting', 'guidance', 'library', 
+        'health_services', 'maintenance_custodial', 'security', 
+        'system_admin', 'admin_support'
+      ];
+      const allFaculty = [];
+
+      for (const dept of departments) {
+        try {
+          const collection = this.db.db.collection(`non_teaching_faculty_${dept}`);
+          const faculty = await collection.find({ data_type: 'non_teaching_faculty' }).toArray();
+          allFaculty.push(...faculty);
+        } catch {
+          // Collection might not exist yet
+          continue;
+        }
+      }
+
+      return allFaculty;
+    } catch (error) {
+      console.error(`❌ Error getting all non-teaching faculty: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get non-teaching faculty by department
+   */
+  async getNonTeachingFacultyByDepartment(department) {
+    try {
+      const dept = department.toLowerCase();
+      const collection = this.db.db.collection(`non_teaching_faculty_${dept}`);
+      return await collection.find({ data_type: 'non_teaching_faculty' }).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting non-teaching faculty: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get non-teaching faculty statistics
+   */
+  async getNonTeachingFacultyStatistics() {
+    try {
+      const allFaculty = await this.getAllNonTeachingFaculty();
+      
+      const stats = {
+        total_faculty: allFaculty.length,
+        by_department: {},
+        by_position: {},
+        by_employment_status: {}
+      };
+
+      allFaculty.forEach(faculty => {
+        // By department
+        const dept = faculty.department || 'ADMIN_SUPPORT';
+        stats.by_department[dept] = (stats.by_department[dept] || 0) + 1;
+
+        // By position
+        const position = faculty.position || 'UNKNOWN';
+        stats.by_position[position] = (stats.by_position[position] || 0) + 1;
+
+        // By employment status
+        const status = faculty.employment_status || 'UNKNOWN';
+        stats.by_employment_status[status] = (stats.by_employment_status[status] || 0) + 1;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting non-teaching faculty statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all non-teaching faculty
+   */
+  async clearAllNonTeachingFaculty() {
+    try {
+      // Get ALL collections in the database
+      const collections = await this.db.db.listCollections().toArray();
+      
+      let totalCleared = 0;
+
+      // Find all collections that start with 'non_teaching_faculty_'
+      for (const collectionInfo of collections) {
+        const collectionName = collectionInfo.name;
+        
+        // Check if this is a non-teaching faculty collection
+        if (collectionName.startsWith('non_teaching_faculty_')) {
+          try {
+            const collection = this.db.db.collection(collectionName);
+            const result = await collection.deleteMany({ data_type: 'non_teaching_faculty' });
+            
+            if (result.deletedCount > 0) {
+              console.log(`   Cleared ${result.deletedCount} non-teaching faculty record(s) from ${collectionName}`);
+              totalCleared += result.deletedCount;
+            }
+          } catch (error) {
+            console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
+            continue;
+          }
+        }
+      }
+
+      if (totalCleared > 0) {
+        console.log(`✅ Total non-teaching faculty records cleared: ${totalCleared}`);
+      } else {
+        console.log('ℹ️  No non-teaching faculty records to clear');
+      }
+    } catch (error) {
+      console.error(`❌ Error clearing non-teaching faculty: ${error.message}`);
+    }
+  }
+}
+
+class CurriculumManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store curriculum in department-specific collection
+   */
+  async storeCurriculum(curriculumData) {
+    try {
+      const dept = (curriculumData.metadata.department || 'UNKNOWN').toLowerCase();
+      
+      // Get the curriculum collection for this department
+      const collection = this.db.db.collection(`curriculum_${dept}`);
+      
+      const curriculumDoc = {
+        // Identification
+        curriculum_id: `CURRICULUM_${curriculumData.metadata.department}_${curriculumData.metadata.course}_${curriculumData.metadata.effective_year || Date.now()}`,
+        program: curriculumData.metadata.program,
+        course: curriculumData.metadata.course,
+        department: curriculumData.metadata.department,
+        
+        // Curriculum Info
+        effective_year: curriculumData.metadata.effective_year,
+        curriculum_year: curriculumData.metadata.curriculum_year,
+        revision: curriculumData.metadata.revision,
+        total_subjects: curriculumData.metadata.total_subjects,
+        
+        // Full curriculum structure (organized by year and semester)
+        curriculum: curriculumData.curriculum_data.curriculum,
+        
+        // Full formatted text
+        formatted_text: curriculumData.formatted_text,
+        
+        // Metadata
+        source_file: curriculumData.metadata.source_file,
+        data_type: 'curriculum',
+        created_at: curriculumData.metadata.created_at,
+        updated_at: new Date()
+      };
+      
+      // Insert the document
+      const result = await collection.insertOne(curriculumDoc);
+      
+      console.log(`✅ Curriculum stored in: curriculum_${dept}`);
+      console.log(`   Curriculum ID: ${curriculumDoc.curriculum_id}`);
+      console.log(`   MongoDB _id: ${result.insertedId}`);
+      
+      return curriculumDoc.curriculum_id;
+      
+    } catch (error) {
+      console.error(`❌ Error storing curriculum: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all curricula from all departments
+   */
+  async getAllCurricula() {
+    try {
+      const departments = ['cas', 'ccs', 'chtm', 'cba', 'cte', 'coe', 'con', 'unknown'];
+      const allCurricula = [];
+
+      for (const dept of departments) {
+        try {
+          const collection = this.db.db.collection(`curriculum_${dept}`);
+          const curricula = await collection.find({ data_type: 'curriculum' }).toArray();
+          allCurricula.push(...curricula);
+        } catch {
+          // Collection might not exist yet
+          continue;
+        }
+      }
+
+      return allCurricula;
+    } catch (error) {
+      console.error(`❌ Error getting all curricula: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get curricula by department
+   */
+  async getCurriculaByDepartment(department) {
+    try {
+      const dept = department.toLowerCase();
+      const collection = this.db.db.collection(`curriculum_${dept}`);
+      return await collection.find({ data_type: 'curriculum' }).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting curricula: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get curricula by course
+   */
+  async getCurriculaByCourse(course) {
+    try {
+      const allCurricula = await this.getAllCurricula();
+      return allCurricula.filter(curr => curr.course === course.toUpperCase());
+    } catch (error) {
+      console.error(`❌ Error getting curricula by course: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get curriculum statistics
+   */
+  async getCurriculumStatistics() {
+    try {
+      const allCurricula = await this.getAllCurricula();
+      
+      const stats = {
+        total_curricula: allCurricula.length,
+        by_department: {},
+        by_course: {},
+        by_year: {},
+        total_subjects_all: 0
+      };
+
+      allCurricula.forEach(curriculum => {
+        // By department
+        const dept = curriculum.department || 'UNKNOWN';
+        stats.by_department[dept] = (stats.by_department[dept] || 0) + 1;
+
+        // By course
+        const course = curriculum.course || 'UNKNOWN';
+        stats.by_course[course] = (stats.by_course[course] || 0) + 1;
+
+        // By effective year
+        const year = curriculum.effective_year || 'UNKNOWN';
+        stats.by_year[year] = (stats.by_year[year] || 0) + 1;
+
+        // Total subjects
+        stats.total_subjects_all += curriculum.total_subjects || 0;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting curriculum statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all curricula
+   */
+  async clearAllCurricula() {
+  try {
+    console.log('🔍 Searching for curriculum collections...');
+    
+    // Get the actual MongoDB database object
+    const database = this.db.db || this.db.client.db();
+    
+    // Get ALL collections in the database
+    const collections = await database.listCollections().toArray();
+    
+    let totalCleared = 0;
+    let collectionsFound = 0;
+
+    // Find and clear all collections that start with 'curriculum_'
+    for (const collectionInfo of collections) {
+      const collectionName = collectionInfo.name;
+      
+      // Check if this is a curriculum collection
+      if (collectionName.startsWith('curriculum_')) {
+        collectionsFound++;
+        console.log(`   🔍 Found collection: ${collectionName}`);
+        
+        try {
+          const collection = database.collection(collectionName);
+          
+          // Count documents first
+          const count = await collection.countDocuments();
+          console.log(`      Documents in collection: ${count}`);
+          
+          if (count > 0) {
+            // Delete all documents
+            const result = await collection.deleteMany({});
+            
+            console.log(`   ✅ Cleared ${result.deletedCount} curriculum record(s) from ${collectionName}`);
+            totalCleared += result.deletedCount;
+          } else {
+            console.log(`   ℹ️  ${collectionName} is already empty`);
+          }
+          
+        } catch (error) {
+          console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
+          continue;
+        }
+      }
+    }
+
+    if (collectionsFound === 0) {
+      console.log('ℹ️  No curriculum collections found in database');
+    } else if (totalCleared > 0) {
+      console.log(`✅ Total curriculum records cleared: ${totalCleared} from ${collectionsFound} collection(s)`);
+    } else {
+      console.log(`ℹ️  Found ${collectionsFound} collection(s) but they were already empty`);
+    }
+    
+  } catch (error) {
+    console.error(`❌ Error clearing curricula: ${error.message}`);
+    console.error(error.stack);
+  }
+}
+}
+
+class NonTeachingScheduleManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  async storeNonTeachingSchedule(scheduleData) {
+    try {
+      const dept = (scheduleData.metadata.department || 'UNKNOWN').toLowerCase();
+      const collection = this.db.db.collection(`non_teaching_schedule_${dept}`);
+      
+      const scheduleDoc = {
+        schedule_id: `SCHEDULE_NT_${scheduleData.metadata.staff_name.replace(/\s+/g, '_').toUpperCase()}_${Date.now()}`,
+        staff_name: scheduleData.metadata.staff_name,
+        full_name: scheduleData.metadata.full_name,
+        department: scheduleData.metadata.department,
+        position: scheduleData.metadata.position || 'Staff',
+        total_shifts: scheduleData.metadata.total_shifts,
+        days_working: scheduleData.metadata.days_working,
+        schedule: scheduleData.schedule_data.schedule,
+        schedule_by_day: scheduleData.schedule_data.by_day,
+        formatted_text: scheduleData.formatted_text,
+        source_file: scheduleData.metadata.source_file,
+        data_type: 'non_teaching_faculty_schedule',
+        faculty_type: 'non_teaching_schedule',
+        created_at: scheduleData.metadata.created_at,
+        updated_at: new Date()
+      };
+      
+      const result = await collection.insertOne(scheduleDoc);
+      console.log(`✅ Non-teaching schedule stored in: non_teaching_schedule_${dept}`);
+      console.log(`   Schedule ID: ${scheduleDoc.schedule_id}`);
+      console.log(`   Staff: ${scheduleDoc.staff_name}`);
+      console.log(`   MongoDB _id: ${result.insertedId}`);
+      
+      return scheduleDoc.schedule_id;
+    } catch (error) {
+      console.error(`❌ Error storing non-teaching schedule: ${error.message}`);
+      return null;
+    }
+  }
+
+  async getAllNonTeachingSchedules() {
+    try {
+      const departments = ['ccs', 'chtm', 'cba', 'cte', 'coe', 'con', 'cas', 'admin', 'registrar', 'library', 'finance', 'hr', 'unknown'];
+      const allSchedules = [];
+      for (const dept of departments) {
+        try {
+          const collection = this.db.db.collection(`non_teaching_schedule_${dept}`);
+          const schedules = await collection.find({ data_type: 'non_teaching_faculty_schedule' }).toArray();
+          allSchedules.push(...schedules);
+        } catch { continue; }
+      }
+      return allSchedules;
+    } catch (error) {
+      console.error(`❌ Error getting all non-teaching schedules: ${error.message}`);
+      return [];
+    }
+  }
+
+  async getNonTeachingSchedulesByDepartment(department) {
+    try {
+      const dept = department.toLowerCase();
+      const collection = this.db.db.collection(`non_teaching_schedule_${dept}`);
+      return await collection.find({ data_type: 'non_teaching_faculty_schedule' }).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting non-teaching schedules: ${error.message}`);
+      return [];
+    }
+  }
+
+  async getNonTeachingScheduleByStaff(staffName) {
+    try {
+      const allSchedules = await this.getAllNonTeachingSchedules();
+      return allSchedules.filter(schedule => 
+        schedule.staff_name.toLowerCase().includes(staffName.toLowerCase())
+      );
+    } catch (error) {
+      console.error(`❌ Error getting schedule by staff: ${error.message}`);
+      return [];
+    }
+  }
+
+  async getNonTeachingScheduleStatistics() {
+    try {
+      const allSchedules = await this.getAllNonTeachingSchedules();
+      const stats = {
+        total_schedules: allSchedules.length,
+        by_department: {},
+        total_shifts_all: 0,
+        total_staff: allSchedules.length,
+        by_day: {}
+      };
+      allSchedules.forEach(schedule => {
+        const dept = schedule.department || 'UNKNOWN';
+        stats.by_department[dept] = (stats.by_department[dept] || 0) + 1;
+        stats.total_shifts_all += schedule.total_shifts || 0;
+        if (schedule.schedule_by_day) {
+          Object.keys(schedule.schedule_by_day).forEach(day => {
+            stats.by_day[day] = (stats.by_day[day] || 0) + 1;
+          });
+        }
+      });
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting non-teaching schedule statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  async clearAllNonTeachingSchedules() {
+  try {
+    console.log('🔍 Searching for non-teaching schedule collections...');
+    
+    // Get the actual MongoDB database object
+    const database = this.db.db || this.db.client.db();
+    
+    // Get ALL collections in the database
+    const collections = await database.listCollections().toArray();
+    
+    let totalCleared = 0;
+    let collectionsFound = 0;
+
+    // Find and clear all collections that start with 'non_teaching_schedule_'
+    for (const collectionInfo of collections) {
+      const collectionName = collectionInfo.name;
+      
+      // Check if this is a non-teaching schedule collection
+      if (collectionName.startsWith('non_teaching_schedule_')) {
+        collectionsFound++;
+        console.log(`   🔍 Found collection: ${collectionName}`);
+        
+        try {
+          const collection = database.collection(collectionName);
+          
+          // Count documents first
+          const count = await collection.countDocuments();
+          console.log(`      Documents in collection: ${count}`);
+          
+          if (count > 0) {
+            // Delete all documents
+            const result = await collection.deleteMany({});
+            
+            console.log(`   ✅ Cleared ${result.deletedCount} schedule(s) from ${collectionName}`);
+            totalCleared += result.deletedCount;
+          } else {
+            console.log(`   ℹ️  ${collectionName} is already empty`);
+          }
+          
+        } catch (error) {
+          console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
+          continue;
+        }
+      }
+    }
+
+    if (collectionsFound === 0) {
+      console.log('ℹ️  No non-teaching schedule collections found in database');
+    } else if (totalCleared > 0) {
+      console.log(`✅ Total non-teaching schedules cleared: ${totalCleared} from ${collectionsFound} collection(s)`);
+    } else {
+      console.log(`ℹ️  Found ${collectionsFound} collection(s) but they were already empty`);
+    }
+    
+  } catch (error) {
+    console.error(`❌ Error clearing non-teaching schedules: ${error.message}`);
+    console.error(error.stack);
+  }
+}
+}
+
+class AdminManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store admin data in department-specific collection
+   */
+  async storeAdmin(adminData) {
+    try {
+      const dept = (adminData.metadata.department || 'ADMIN').toLowerCase();
+      
+      // Get the admin collection for this department
+      const collection = this.db.db.collection(`admin_${dept}`);
+      
+      const adminDoc = {
+        // Identification
+        admin_id: `ADMIN_${adminData.metadata.surname.replace(/\s+/g, '_').toUpperCase()}_${Date.now()}`,
+        full_name: adminData.metadata.full_name,
+        surname: adminData.metadata.surname,
+        first_name: adminData.metadata.first_name,
+        middle_name: adminData.metadata.middle_name,
+        
+        // Administrative Info
+        department: adminData.metadata.department,
+        position: adminData.metadata.position,
+        admin_type: adminData.metadata.admin_type,
+        employment_status: adminData.metadata.employment_status,
+        
+        // Contact Info
+        email: adminData.metadata.email,
+        phone: adminData.metadata.phone,
+        
+        // Full admin data
+        admin_info: adminData.admin_data,
+        
+        // Formatted text
+        formatted_text: adminData.formatted_text,
+        
+        // Metadata
+        source_file: adminData.metadata.source_file,
+        data_type: 'admin_excel',
+        faculty_type: 'admin',
+        created_at: adminData.metadata.created_at,
+        updated_at: new Date()
+      };
+      
+      // Insert the document
+      const result = await collection.insertOne(adminDoc);
+      
+      console.log(`✅ Admin stored in: admin_${dept}`);
+      console.log(`   Admin ID: ${adminDoc.admin_id}`);
+      console.log(`   Name: ${adminDoc.full_name}`);
+      console.log(`   Type: ${adminDoc.admin_type}`);
+      console.log(`   MongoDB _id: ${result.insertedId}`);
+      
+      return adminDoc.admin_id;
+      
+    } catch (error) {
+      console.error(`❌ Error storing admin: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all admins from all departments
+   */
+  async getAllAdmins() {
+    try {
+      const departments = ['admin', 'school_admin', 'board'];
+      const allAdmins = [];
+
+      for (const dept of departments) {
+        try {
+          const collection = this.db.db.collection(`admin_${dept}`);
+          const admins = await collection.find({ data_type: 'admin_excel' }).toArray();
+          allAdmins.push(...admins);
+        } catch {
+          // Collection might not exist yet
+          continue;
+        }
+      }
+
+      return allAdmins;
+    } catch (error) {
+      console.error(`❌ Error getting all admins: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get admins by department
+   */
+  async getAdminsByDepartment(department) {
+    try {
+      const dept = department.toLowerCase();
+      const collection = this.db.db.collection(`admin_${dept}`);
+      return await collection.find({ data_type: 'admin_excel' }).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting admins: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get admins by type (School Administrator or Board Member)
+   */
+  async getAdminsByType(adminType) {
+    try {
+      const allAdmins = await this.getAllAdmins();
+      return allAdmins.filter(admin => admin.admin_type === adminType);
+    } catch (error) {
+      console.error(`❌ Error getting admins by type: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Search admin by name
+   */
+  async searchAdminByName(name) {
+    try {
+      const allAdmins = await this.getAllAdmins();
+      return allAdmins.filter(admin => 
+        admin.full_name.toLowerCase().includes(name.toLowerCase())
+      );
+    } catch (error) {
+      console.error(`❌ Error searching admin: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get admin statistics
+   */
+  async getAdminStatistics() {
+    try {
+      const allAdmins = await this.getAllAdmins();
+      
+      const stats = {
+        total_admins: allAdmins.length,
+        by_department: {},
+        by_type: {},
+        by_employment_status: {}
+      };
+
+      allAdmins.forEach(admin => {
+        // By department
+        const dept = admin.department || 'UNKNOWN';
+        stats.by_department[dept] = (stats.by_department[dept] || 0) + 1;
+
+        // By type
+        const type = admin.admin_type || 'Unknown';
+        stats.by_type[type] = (stats.by_type[type] || 0) + 1;
+
+        // By employment status
+        const status = admin.employment_status || 'Unknown';
+        stats.by_employment_status[status] = (stats.by_employment_status[status] || 0) + 1;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting admin statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all admins
+   */
+  async clearAllAdmins() {
+    try {
+      console.log('🔍 Searching for admin collections...');
+      
+      // Get the actual MongoDB database object
+      const database = this.db.db || this.db.client.db();
+      
+      // Get ALL collections in the database
+      const collections = await database.listCollections().toArray();
+      
+      let totalCleared = 0;
+      let collectionsFound = 0;
+
+      // Find and clear all collections that start with 'admin_'
+      for (const collectionInfo of collections) {
+        const collectionName = collectionInfo.name;
+        
+        // Check if this is an admin collection
+        if (collectionName.startsWith('admin_')) {
+          collectionsFound++;
+          console.log(`   🔍 Found collection: ${collectionName}`);
+          
+          try {
+            const collection = database.collection(collectionName);
+            
+            // Count documents first
+            const count = await collection.countDocuments();
+            console.log(`      Documents in collection: ${count}`);
+            
+            if (count > 0) {
+              // Delete all documents
+              const result = await collection.deleteMany({});
+              
+              console.log(`   ✅ Cleared ${result.deletedCount} admin(s) from ${collectionName}`);
+              totalCleared += result.deletedCount;
+            } else {
+              console.log(`   ℹ️  ${collectionName} is already empty`);
+            }
+            
+          } catch (error) {
+            console.error(`   ⚠️  Error clearing ${collectionName}: ${error.message}`);
+            continue;
+          }
+        }
+      }
+
+      if (collectionsFound === 0) {
+        console.log('ℹ️  No admin collections found in database');
+      } else if (totalCleared > 0) {
+        console.log(`✅ Total admins cleared: ${totalCleared} from ${collectionsFound} collection(s)`);
+      } else {
+        console.log(`ℹ️  Found ${collectionsFound} collection(s) but they were already empty`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error clearing admins: ${error.message}`);
+      console.error(error.stack);
+    }
+  }
+}
+
+class GeneralInfoManager {
+  constructor(db) {
+    this.db = db;
+  }
+
+  /**
+   * Store general info in MongoDB
+   */
+  async storeGeneralInfo(generalInfoData) {
+    try {
+      const infoType = generalInfoData.metadata.info_type;
+      
+      // Use a single collection for all general info
+      const collection = this.db.db.collection('general_info');
+      
+      const infoDoc = {
+        info_id: `INFO_${infoType.toUpperCase()}_${Date.now()}`,
+        info_type: infoType,
+        
+        // Content based on type
+        content: generalInfoData.content,
+        
+        // Raw and formatted text
+        raw_text: generalInfoData.raw_text,
+        formatted_text: generalInfoData.formatted_text,
+        
+        // Metadata
+        source_file: generalInfoData.metadata.source_file,
+        data_type: 'general_info_pdf',
+        character_count: generalInfoData.metadata.character_count,
+        extracted_at: generalInfoData.metadata.extracted_at,
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      
+      // Check if this info type already exists and update or insert
+      const existing = await collection.findOne({ info_type: infoType });
+      
+      if (existing) {
+        // Update existing
+        await collection.updateOne(
+          { info_type: infoType },
+          { $set: infoDoc }
+        );
+        console.log(`✅ Updated ${infoType} in general_info collection`);
+      } else {
+        // Insert new
+        const result = await collection.insertOne(infoDoc);
+        console.log(`✅ Stored ${infoType} in general_info collection`);
+        console.log(`   MongoDB _id: ${result.insertedId}`);
+      }
+      
+      console.log(`   Info ID: ${infoDoc.info_id}`);
+      console.log(`   Type: ${infoType}`);
+      console.log(`   Characters: ${infoDoc.character_count}`);
+      
+      return infoDoc.info_id;
+      
+    } catch (error) {
+      console.error(`❌ Error storing general info: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get all general information
+   */
+  async getAllGeneralInfo() {
+    try {
+      const collection = this.db.db.collection('general_info');
+      return await collection.find({}).toArray();
+    } catch (error) {
+      console.error(`❌ Error getting general info: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get general info by type
+   */
+  async getGeneralInfoByType(infoType) {
+    try {
+      const collection = this.db.db.collection('general_info');
+      return await collection.findOne({ info_type: infoType });
+    } catch (error) {
+      console.error(`❌ Error getting general info: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get mission and vision
+   */
+  async getMissionVision() {
+    return await this.getGeneralInfoByType('mission_vision');
+  }
+
+  /**
+   * Get objectives
+   */
+  async getObjectives() {
+    return await this.getGeneralInfoByType('objectives');
+  }
+
+  /**
+   * Get history
+   */
+  async getHistory() {
+    return await this.getGeneralInfoByType('history');
+  }
+
+  /**
+   * Get core values
+   */
+  async getCoreValues() {
+    return await this.getGeneralInfoByType('core_values');
+  }
+
+  /**
+   * Get hymn
+   */
+  async getHymn() {
+    return await this.getGeneralInfoByType('hymn');
+  }
+
+  /**
+   * Search general info
+   */
+  async searchGeneralInfo(searchText) {
+    try {
+      const collection = this.db.db.collection('general_info');
+      return await collection.find({
+        $or: [
+          { raw_text: { $regex: searchText, $options: 'i' } },
+          { info_type: { $regex: searchText, $options: 'i' } }
+        ]
+      }).toArray();
+    } catch (error) {
+      console.error(`❌ Error searching general info: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get general info statistics
+   */
+  async getGeneralInfoStatistics() {
+    try {
+      const allInfo = await this.getAllGeneralInfo();
+      
+      const stats = {
+        total_documents: allInfo.length,
+        by_type: {},
+        total_characters: 0
+      };
+
+      allInfo.forEach(info => {
+        const type = info.info_type || 'unknown';
+        stats.by_type[type] = (stats.by_type[type] || 0) + 1;
+        stats.total_characters += info.character_count || 0;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error(`❌ Error getting general info statistics: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Clear all general info
+   */
+  async clearAllGeneralInfo() {
+    try {
+      console.log('🔍 Clearing general info collection...');
+      
+      const database = this.db.db || this.db.client.db();
+      const collection = database.collection('general_info');
+      
+      const count = await collection.countDocuments();
+      console.log(`   Documents in collection: ${count}`);
+      
+      if (count > 0) {
+        const result = await collection.deleteMany({});
+        console.log(`✅ Cleared ${result.deletedCount} general info document(s)`);
+      } else {
+        console.log(`ℹ️  General info collection is already empty`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error clearing general info: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update specific general info
+   */
+  async updateGeneralInfo(infoType, updates) {
+    try {
+      const collection = this.db.db.collection('general_info');
+      const result = await collection.updateOne(
+        { info_type: infoType },
+        { 
+          $set: {
+            ...updates,
+            updated_at: new Date()
+          }
+        }
+      );
+      
+      if (result.modifiedCount > 0) {
+        console.log(`✅ Updated ${infoType}`);
+        return true;
+      } else {
+        console.log(`⚠️  No document found for ${infoType}`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error updating general info: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Delete specific general info
+   */
+  async deleteGeneralInfo(infoType) {
+    try {
+      const collection = this.db.db.collection('general_info');
+      const result = await collection.deleteOne({ info_type: infoType });
+      
+      if (result.deletedCount > 0) {
+        console.log(`✅ Deleted ${infoType}`);
+        return true;
+      } else {
+        console.log(`⚠️  No document found for ${infoType}`);
+        return false;
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error deleting general info: ${error.message}`);
+      return false;
+    }
+  }
+}
+
 module.exports = { 
   StudentDatabase, 
   StudentDataExtractor, 
   CORScheduleManager,
   StudentGradesManager,  
+  TeachingFacultyManager,
+  TeachingFacultyScheduleManager,
+  NonTeachingFacultyManager, 
+  CurriculumManager, 
+  NonTeachingScheduleManager,
+  AdminManager,
+  GeneralInfoManager, 
   FieldStatus, 
   MediaDefaults 
 };
