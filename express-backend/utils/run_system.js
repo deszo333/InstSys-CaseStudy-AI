@@ -115,15 +115,13 @@ class SchoolInformationSystem {
           console.log(`   Processing: ${file}`);
           
           try {
-            const extractor = new StudentDataExtractor();
-            const studentData = await extractor.extractFromExcel(filePath);
+            const success = await StudentDataExtractor.processExcel(filePath, this.db);
             
-            if (studentData && studentData.student_id) {
-              await this.db.addStudent(studentData);
+            if (success) {
               totalProcessed++;
               console.log(`   ✅ ${file}`);
             } else {
-              console.log(`   ❌ ${file} - Invalid data`);
+              console.log(`   ❌ ${file} - No data extracted`);
             }
           } catch (error) {
             console.error(`   ❌ ${file} - Error: ${error.message}`);
@@ -667,7 +665,7 @@ class SchoolInformationSystem {
     
     const TeachingFacultyResumeExtractor = require('./teaching_faculty_resume_pdf_extractor');
     const resumeExtractor = new TeachingFacultyResumeExtractor();
-    //asdasdadas
+    
     let resumeProcessed = 0;
     let resumeSkipped = 0;
     
