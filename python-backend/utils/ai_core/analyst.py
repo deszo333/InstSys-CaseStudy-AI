@@ -457,30 +457,33 @@ class AIAnalyst:
             "content": "The user provided a conversational query. A standard greeting is appropriate.",
             "metadata": {"status": "success"}
         }]
+
+
+        
     
-    def get_school_info(self, topic: Any = None) -> List[dict]:
+    def get_school_info(self, info_type: Any = None) -> List[dict]:
         """
         [UPGRADED] A tool for retrieving general school information.
         """
-        self.debug(f"🛠️ Running upgraded tool: get_school_info for topic: {topic}")
+        self.debug(f"🛠️ Running upgraded tool: get_school_info for topic: {info_type}")
 
         filters = {}
         document_type_to_find = None
 
-        if isinstance(topic, str):
+        if isinstance(info_type, str):
             # --- ✨ NEW FIX: Check for keywords within the string ---
-            topic_lower = topic.lower()
-            if 'mission' in topic_lower or 'vision' in topic_lower:
+            info_type_lower = info_type.lower()
+            if 'mission' in info_type_lower or 'vision' in info_type_lower:
                 document_type_to_find = 'mission_vision'
             else:
-                document_type_to_find = topic_lower
+                document_type_to_find = info_type_lower
             # --- END NEW FIX ---
 
-        elif isinstance(topic, list) and topic:
+        elif isinstance(info_type, list) and info_type:
             # This handles the case where the planner correctly sends a list
-            document_type_to_find = "_".join(t.lower() for t in topic)
+            document_type_to_find = "_".join(t.lower() for t in info_type)
 
-        elif not topic:
+        elif not info_type:
             # Wildcard search for Institutional Identity.
             self.debug("-> No topic provided. Performing wildcard search for Institutional Identity.")
             filters = {'department': 'INSTITUTIONAL_IDENTITY'}
@@ -498,7 +501,7 @@ class AIAnalyst:
         # This line will now correctly map the pre-processed topic
         document_type_to_find = doc_type_map.get(document_type_to_find, document_type_to_find)
 
-        filters = {'document_type': document_type_to_find}
+        filters = {'info_type': document_type_to_find} # <-- CORRECT FIELD NAME
         return self.search_database(filters=filters)
     
     def query_curriculum(
@@ -518,10 +521,21 @@ class AIAnalyst:
 
         filters = {}
         doc_filters = []
-        query_text = "academic program curriculum" 
+ 
+
+        # --- START MODIFICATION ---
+        # Only set specific query_text if specific filters are provided
+        query_text = None 
+        if program and not (subject_code or subject_name):
+            query_text = f"curriculum for the {program} program"
+        elif subject_code:
+            query_text = f"curriculum for subject {subject_code}"
+        elif subject_name:
+            query_text = f"curriculum containing subject {subject_name}"
+        # If no specific filters, query_text remains None (will trigger wildcard search)
+        # --- END MODIFICATION ---
 
         # Build metadata filters for precise collection matching
-        query_text = "academic program curriculum" 
         if program:
             query_text = f"curriculum for the {program} program"
 
@@ -2654,14 +2668,26 @@ class AIAnalyst:
 
                 # --- ✨ TEMP FIX: De-duplicate results before sending to Synthesizer ---
             if collected_docs:
+
                 self.debug(f"Original unfiltered doc count: {len(collected_docs)}. Starting de-duplication...")
                 unique_docs = {}
                 for doc in collected_docs:
-                    # Use the document's 'content' as a unique key to filter out duplicates.
-                    content_key = doc.get('content')
+                    # --- START MODIFICATION ---
+                    # Get the content field
+                    content_value = doc.get('content')
+                    
+                    # Convert content to a hashable string key (JSON representation)
+                    # Use sort_keys=True for consistency if content is a dict
+                    try:
+                        content_key = json.dumps(content_value, sort_keys=True)
+                    except TypeError:
+                        # Fallback if content is somehow not JSON serializable (unlikely)
+                        content_key = str(content_value) 
+                        
+                    # Now use the guaranteed-string key for de-duplication
                     if content_key and content_key not in unique_docs:
-                        unique_docs[content_key] = doc
-                
+                         unique_docs[content_key] = doc
+                    # --- END MODIFICATION --- 
                 deduplicated_list = list(unique_docs.values())
                 self.debug(f"Found {len(deduplicated_list)} unique documents after de-duplication.")
                 # Replace the original list with the clean, de-duplicated one.

@@ -132,33 +132,48 @@ class MongoCollectionAdapter:
         filter_query = self._translate_where_clause(where) if where else {}
         results = list(self.collection.find(filter_query).limit(limit))
         return self._format_output(results)
+    
+
+
+    # In database.py, inside the MongoCollectionAdapter class
+# Replace the entire query method with this corrected version:
 
     def query(self, query_texts: List[str], n_results: int = 10, where: Dict = None, where_document: Dict = None) -> Dict:
         """
-        [MODIFIED] A more robust version that handles multi-word name searches
-        by splitting the query and searching for all words individually.
+        [CORRECTED] Executes a query. Prioritizes the 'where' clause (metadata filters)
+        over 'query_texts' (semantic/text search) when both are provided.
         """
         filter_query = self._translate_where_clause(where) if where else {}
         search_text = None
 
-        if where_document and "$contains" in where_document:
-            search_text = where_document["$contains"]
-        elif query_texts and query_texts != ["*"]:
-            search_text = query_texts[0]
+        # --- START MODIFICATION ---
+        # Only use text search if NO specific 'where' filter is applied.
+        # The 'where' filter is more precise and should take precedence.
+        if not filter_query:
+            if where_document and "$contains" in where_document:
+                search_text = where_document["$contains"]
+            elif query_texts and query_texts != ["*"]:
+                search_text = query_texts[0]
 
-        if search_text:
-            # --- THIS IS THE FIX ---
-            # Split the search query into individual words
-            words = search_text.split()
-            
-            if words:
-                # Build a regex that requires all words to be present, in any order.
-                # This uses positive lookaheads: `(?=.*word1)(?=.*word2)`
-                regex_pattern = "".join([f"(?=.*{re.escape(word)})" for word in words])
-                
-                # Apply this flexible regex to the 'full_name' field.
-                filter_query.setdefault("full_name", {"$regex": regex_pattern, "$options": "i"})
-            # --- END OF FIX ---
+            if search_text:
+                # Apply text search ONLY if no specific metadata filter was given.
+                # Split the search query into individual words
+                words = search_text.split()
+                if words:
+                    # Build a regex that requires all words to be present, in any order.
+                    regex_pattern = "".join([f"(?=.*{re.escape(word)})" for word in words])
+                    # Apply this to a general text field if available, or fallback to 'full_name'
+                    # NOTE: You might need a dedicated indexed text field in MongoDB for better performance.
+                    # For now, we'll keep the fallback to 'full_name' but it will likely fail for non-person docs.
+                    # A better long-term solution is MongoDB Atlas Search or a dedicated text index.
+                    filter_query.setdefault("full_name", {"$regex": regex_pattern, "$options": "i"}) # Fallback, might need adjustment
+        # --- END MODIFICATION ---
+
+        # If filter_query is still empty after all checks, match all documents.
+        if not filter_query:
+            filter_query = {}
 
         results = list(self.collection.find(filter_query).limit(n_results))
         return self._format_output(results)
+
+    

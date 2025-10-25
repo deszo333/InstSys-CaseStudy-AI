@@ -70,7 +70,7 @@ PROMPT_TEMPLATES = {
         - Available Departments: {all_departments_list}
         - Available Staff Positions: {all_positions_list}
         - Available Employment Statuses: {all_statuses_list}
-        - Available School Info Topics: {all_doc_types_list}
+        - Available School Info info_type: {all_doc_types_list}
 
         --- CATEGORY 1: Name-Based Search Tools (ONLY IF THE name IS in the query) ---
         - `answer_question_about_person(person_name: str, question: str)`: **PRIMARY TOOL.** You **MUST** use this tool if the query contains a person's name AND asks for a **specific fact** (e.g., "what is the schedule of...", "phone number for...", "religion of...").
@@ -99,7 +99,7 @@ PROMPT_TEMPLATES = {
         - `compare_schedules(person_a_name: str, person_b_name: str)`: Use when comparing the schedules of two named people.
 
         --- CATEGORY 5: General School Tools (What about the school itself?) ---
-        - `get_school_info(topic: str)`: 
+        - `get_school_info(info_type: str)`: 
           **Function:** Retrieves core institutional identity documents.
           **Use Case:** You **MUST** use this tool ONLY for queries about the school's **'mission', 'vision', 'history', or 'objectives'**. Anything about the school's identity itself.
 
