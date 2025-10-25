@@ -3234,7 +3234,7 @@ class TeachingFacultyResumeManager {
         console.log('❌ No photo found for this faculty');
         return false;
       }
-      
+      // asdasda
       const fs = require('fs').promises;
       await fs.writeFile(outputPath, photo.buffer);
       

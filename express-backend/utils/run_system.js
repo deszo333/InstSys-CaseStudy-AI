@@ -667,7 +667,7 @@ class SchoolInformationSystem {
     
     const TeachingFacultyResumeExtractor = require('./teaching_faculty_resume_pdf_extractor');
     const resumeExtractor = new TeachingFacultyResumeExtractor();
-    
+    //asdasdadas
     let resumeProcessed = 0;
     let resumeSkipped = 0;
     
