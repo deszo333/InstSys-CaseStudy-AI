@@ -51,13 +51,13 @@ class AIAnalyst:
             self.mongo_client = MongoClient(mongo_connection_string)
             self.mongo_db = self.mongo_client[mongo_db_name]
             self.mongo_client.admin.command('ping')
-            print(f"✅ Successfully connected to MongoDB database: '{mongo_db_name}'")
+            print(f"Successfully connected to MongoDB database: '{mongo_db_name}'")
         except Exception as e:
-            print(f"❌ Failed to connect to MongoDB: {e}")
+            print(f"Failed to connect to MongoDB: {e}")
             raise
             
         self.collections = {name: MongoCollectionAdapter(self.mongo_db[name]) for name in collections}
-        print(f"📚 AI Analyst is now using MongoDB collections: {list(self.collections.keys())}")
+        print(f"AI Analyst is now using MongoDB collections: {list(self.collections.keys())}")
         # --- END OF MONGODB MODIFICATIONS ---
 
         self.execution_mode = execution_mode
@@ -579,7 +579,7 @@ class AIAnalyst:
 
     def _get_unique_document_types(self) -> List[str]:
         """Queries the database to get all unique, non-empty document types."""
-        self.debug("🔎 Discovering unique document types from the database...")
+        self.debug("Discovering unique document types from the database...")
         # This calls the existing helper method to find unique values for a specific field
         return self._get_unique_values_for_field(['document_type'])
     
@@ -927,7 +927,7 @@ class AIAnalyst:
         [MODIFIED] Provides a high-level summary of the database. This version is adapted
         to correctly unpack the data structure from the MongoCollectionAdapter.
         """
-        self.debug("🛠️ Running upgraded tool: get_database_summary")
+        self.debug("Running upgraded tool: get_database_summary")
         summary_docs = []
         
         if not self.collections:
@@ -962,7 +962,7 @@ class AIAnalyst:
                     }
                 })
             except Exception as e:
-                self.debug(f"⚠️ Could not get info for collection {name}: {e}")
+                self.debug(f"Could not get info for collection {name}: {e}")
         
         return summary_docs
     
@@ -2508,7 +2508,7 @@ class AIAnalyst:
         if query_intent['target_person']:
             target_person_upper = query_intent['target_person'].upper()
             
-            print(f"🔍 Looking for person: '{target_person_upper}' in document")
+            print(f"Looking for person: '{target_person_upper}' in document")
             
             # ENHANCED: Handle titles like "DR. SMITH" -> also search for "SMITH"
             name_parts = []
@@ -2525,40 +2525,40 @@ class AIAnalyst:
                 if not search_name:
                     continue
                     
-                print(f"🔍 Searching for: '{search_name}'")
+                print(f"Searching for: '{search_name}'")
                 
                 # Very high boost for exact matches in faculty metadata
                 if metadata.get('full_name') and search_name in metadata['full_name'].upper():
                     score += 80
                     found_match = True
-                    print(f"🎯 Found in full_name metadata: +80")
+                    print(f"Found in full_name metadata: +80")
                 elif metadata.get('surname') and search_name in metadata['surname'].upper():
                     score += 75
                     found_match = True
-                    print(f"🎯 Found in surname metadata: +75")
+                    print(f"Found in surname metadata: +75")
                 elif metadata.get('first_name') and search_name in metadata['first_name'].upper():
                     score += 75
                     found_match = True
-                    print(f"🎯 Found in first_name metadata: +75")
+                    print(f"Found in first_name metadata: +75")
                 
                 # ENHANCED: Check adviser field specifically for COR schedules
                 if metadata.get('adviser') and search_name in metadata['adviser'].upper():
                     score += 90  # Higher score for adviser matches
                     found_match = True
-                    print(f"🎯 Found in adviser metadata: +90")
+                    print(f" Found in adviser metadata: +90")
                 
                 # High boost for names in document content
                 if search_name in doc_upper:
                     score += 60
                     found_match = True
-                    print(f"🎯 Found in document content: +60")
+                    print(f" Found in document content: +60")
                 
                 # Check for faculty-specific context
                 if any(term in doc_upper for term in ['FACULTY', 'PROFESSOR', 'INSTRUCTOR', 'TEACHER', 'ADVISER', 'ADVISOR']):
                     if search_name in doc_upper:
                         score += 70
                         found_match = True
-                        print(f"🎯 Found in faculty context: +70")
+                        print(f" Found in faculty context: +70")
                 
                 # Enhanced partial name matching - MORE AGGRESSIVE
                 individual_name_parts = search_name.split()
@@ -2570,7 +2570,7 @@ class AIAnalyst:
                             partial_matches += 1
                             score += 35
                             found_match = True
-                            print(f"🎯 Partial match '{part}' in document: +35")
+                            print(f"Partial match '{part}' in document: +35")
                         
                         # Check metadata fields more thoroughly
                         for field in ['full_name', 'surname', 'first_name', 'adviser']:
@@ -2578,14 +2578,14 @@ class AIAnalyst:
                                 partial_matches += 1
                                 score += 40
                                 found_match = True
-                                print(f"🎯 Partial match '{part}' in {field}: +40")
+                                print(f"Partial match '{part}' in {field}: +40")
                                 break
                 
                 # Boost score if multiple name parts match
                 if partial_matches > 1:
                     score += 25
                     found_match = True
-                    print(f"🎯 Multiple name parts matched: +25")
+                    print(f" Multiple name parts matched: +25")
                 
                 # If we found a match with this search term, we can break
                 if found_match:
@@ -2594,7 +2594,7 @@ class AIAnalyst:
             # Special boost for single name searches in faculty context
             if len(target_person_upper.split()) == 1 and any(term in doc_upper for term in ['FACULTY', 'PROFESSOR', 'TEACHING', 'ADVISER']):
                 score += 30
-                print(f"🎯 Single name in faculty context: +30")
+                print(f" Single name in faculty context: +30")
 
         # Rest of the scoring logic remains the same...
         if query_intent['target_course'] and query_intent['target_course'] in doc_upper:
@@ -2629,18 +2629,18 @@ class AIAnalyst:
         else:
             min_relevance = 5  # Lower default threshold
         
-        print(f"🔍 Filtering {len(results)} results with min_relevance: {min_relevance}")
+        print(f" Filtering {len(results)} results with min_relevance: {min_relevance}")
         
         # Remove results that don't meet minimum relevance
         filtered_results = []
         for r in results:
-            print(f"🔍 Result relevance: {r['relevance']} (min: {min_relevance})")
+            print(f" Result relevance: {r['relevance']} (min: {min_relevance})")
             if r['relevance'] >= min_relevance:
                 filtered_results.append(r)
             else:
-                print(f"🔍 Filtered out result with relevance {r['relevance']}")
+                print(f" Filtered out result with relevance {r['relevance']}")
         
-        print(f"🔍 After filtering: {len(filtered_results)} results remain")
+        print(f" After filtering: {len(filtered_results)} results remain")
         
         # Sort by relevance score
         filtered_results.sort(key=lambda x: x['relevance'], reverse=True)
@@ -2665,7 +2665,7 @@ class AIAnalyst:
             filtered_results = unique_results
         
         final_results = filtered_results[:max_results]
-        print(f"🔍 Final results count: {len(final_results)}")
+        print(f" Final results count: {len(final_results)}")
         return final_results
 
     def explain_match(self, query_intent, document, metadata):
@@ -3452,7 +3452,7 @@ class AIAnalyst:
 
                 # --- ✨ START: DEBUG CODE TO SHOW RETRIEVED DOCS ---
             self.debug("\n" + "="*50)
-            self.debug(f"📑 Final {len(collected_docs)} documents being sent to Synthesizer:")
+            self.debug(f" Final {len(collected_docs)} documents being sent to Synthesizer:")
             # Pretty-print the JSON to the console
             debug_output = json.dumps(collected_docs, indent=2)
             print(debug_output)
@@ -3783,7 +3783,7 @@ class AIAnalyst:
 
             # --- ADD THIS NEW BLOCK ---
             if q.lower() == "insights":
-                print("\n--- 📊 AI Performance Insights ---")
+                print("\n---  AI Performance Insights ---")
                 insights = self.training_system.get_training_insights()
                 print(insights)
                 print("---------------------------------\n")
@@ -3821,7 +3821,7 @@ class AIAnalyst:
             output_filename = "latest_response_data.json"
             with open(output_filename, "w", encoding="utf-8") as f:
                 json.dump(output_for_file, f, indent=2, default=str)
-            print(f"✅ Detailed data and image map saved to '{output_filename}'")
+            print(f" Detailed data and image map saved to '{output_filename}'")
 
             if plan_json and "plan" in plan_json:
                 last_query = q
