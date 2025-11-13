@@ -21,7 +21,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-console.log("✅ Gmail config:", {
+console.log("Gmail config:", {
   user: process.env.EMAIL_USER,
   hasPass: !!process.env.EMAIL_PASS
 });

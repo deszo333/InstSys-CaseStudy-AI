@@ -16,7 +16,7 @@ const ACCOUNTS_DIR = path.join(__outdirname, "src/config");
 router.get("/:student_id", async (req, res) => {
   try {
     const studentId = req.params.student_id;
-    console.log("✅ fetch student route hit with ID:", studentId);
+    console.log("fetch student route hit with ID:", studentId);
 
     let students = loadStudents();
     // console.log("All students loaded:", students);
@@ -41,7 +41,7 @@ router.get("/:student_id", async (req, res) => {
       if (fs.existsSync(guestFile)) {
         const guestData = JSON.parse(fs.readFileSync(guestFile));
         student = guestData[studentId] ?? Object.values(guestData)[0];
-        console.log("✅ Guest student data loaded:", student);
+        console.log("Guest student data loaded:", student);
       }
     }
     
@@ -81,10 +81,10 @@ router.get("/:student_id", async (req, res) => {
     };
 
     res.status(200).json(decryptedStudent);
-    // console.log("✅ Decrypted student data sent:", decryptedStudent);
+    // console.log("Decrypted student data sent:", decryptedStudent);
   } catch (err) {
     res.status(500).json({ error: err.message });
-    console.error("❌ Error in fetch student route:", err);
+    console.error("Error in fetch student route:", err);
   }
 });
 
