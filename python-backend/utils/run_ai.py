@@ -123,7 +123,7 @@ def endpoint_connection(collection = []):
     """
     config_path = Path("config/config.json")
     config = load_config(config_path)
-    collection = list_all_collections(config)
+    collection = list_all_collections(config, role=None, assign=None)
     
     return AIAnalyst(collections= collection, llm_config=config), AdminAnalyst(llm_config=config)
 
