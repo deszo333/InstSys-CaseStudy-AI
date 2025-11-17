@@ -21,6 +21,7 @@ export async function callPythonAPI(userQuery, session_id = 22) {
   }
 }
 
+
 //  ###################################################
 //  toggle switch for Admin mode and Show student Image
 //  ###################################################

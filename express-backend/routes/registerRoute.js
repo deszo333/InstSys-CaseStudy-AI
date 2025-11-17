@@ -19,6 +19,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  tls: {
+    rejectUnauthorized: false,
+  },
 });
 
 console.log("Gmail config:", {
@@ -30,7 +33,7 @@ router.post("/register", async (req, res) => {
   try {
     const parsedData = req.body;
 
-    console.log("Register route hit with data:", parsedData);
+    // console.log("Register route hit with data:", parsedData);
 
     const requiredFields = [
       "studentId",
@@ -66,6 +69,7 @@ router.post("/register", async (req, res) => {
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     console.log("Session object:", req.session);
+    console.log(`verification code: ${verificationCode}`)
 
     // Store registration data and code in session
     req.session.tempUser = {
@@ -75,12 +79,12 @@ router.post("/register", async (req, res) => {
     };
 
     // Send code to user's email
-    await transporter.sendMail({
-      from: `"Ai-UI 2FA" <${process.env.EMAIL_USER}>`,
-      to: parsedData.email,
-      subject: "Your Ai-UI Verification Code",
-      text: `Your verification code is: ${verificationCode}`,
-    });
+    // await transporter.sendMail({
+    //   from: `"Ai-UI 2FA" <${process.env.EMAIL_USER}>`,
+    //   to: parsedData.email,
+    //   subject: "Your Ai-UI Verification Code",
+    //   text: `Your verification code is: ${verificationCode}`,
+    // });
 
     return res.json({ message: "Verification code sent to your email. Please verify.", email: parsedData.email });
   } catch (err) {

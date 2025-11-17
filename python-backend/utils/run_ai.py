@@ -4,6 +4,7 @@ import json
 import argparse
 from pathlib import Path
 import os
+from utils.ai_core.analyst import AIAnalyst
 from utils.ai_core.admin_analyst import AdminAnalyst
 
 # --- Exception placeholder you can expand later --------------------------------
@@ -53,7 +54,7 @@ def get_mongo_params(config: dict):
     return mongo_uri, mongo_db
 
 
-def list_all_collections(config: dict):
+def list_all_collections(config: dict, role: None, assign: str):
     """
     Return all collection names in the configured MongoDB database.
     Honors optional allow/deny lists:
@@ -92,24 +93,24 @@ def list_all_collections(config: dict):
 
         if not discovered:
             print("⚠️ No user collections discovered; falling back to static defaults.")
-            return ["students_ccs", "schedules_ccs"]
+            return []
 
         return sorted(discovered)
 
     except Exception as e:
         print(f"⚠️ Could not discover collections from MongoDB: {e}")
         print("   Falling back to static defaults.")
-        return ["students_ccs", "schedules_ccs"]
+        return []
     
-def endpoint_connection():
+def endpoint_connection(collection = []):
     
     """function connection to entrypoint API
     """
     config_path = Path("config/config.json")
     config = load_config(config_path)
-    collections = list_all_collections(config)
+    collection = list_all_collections(config, role=None, assign=None)
     
-    return AIAnalyst(collections=collections , llm_config=config), AdminAnalyst(llm_config=config)
+    return AIAnalyst(collections= collection, llm_config=config), AdminAnalyst(llm_config=config)
 
 def main():
     """

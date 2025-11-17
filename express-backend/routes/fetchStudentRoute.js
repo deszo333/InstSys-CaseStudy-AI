@@ -49,7 +49,7 @@ router.get("/:student_id", async (req, res) => {
       console.log("❌ Student not found:", studentId);
       return res.status(404).json({ error: "Student not found" });
     }
-    console.log("Decrypted student data (raw):", student);
+    // console.log("Decrypted student data (raw):", student);
 
     // Decrypt and split name (guarding against undefined fields)
     const decryptedName = student.studentName;
