@@ -81,24 +81,6 @@ def list_all_collections(config: dict, role: None, assign: str):
 
         # Filter out system/internal collections just in case
         discovered = [c for c in discovered if not c.startswith("system.")]
-        
-        # Apply role-based filtering
-        if role.lower() == "admin":
-            # Admin can access all collections
-            pass
-        elif role.lower() == "teaching_faculty":
-            # Teaching faculty can access collections related to their assigned courses
-            allowed_collections = []
-            for course in assign:
-                course_lower = course.lower()
-                allowed_collections.extend([c for c in discovered if course_lower in c.lower()])
-            discovered = allowed_collections
-        elif role.lower() == "guest":
-            # Guest has limited access
-            discovered = [c for c in discovered if "guest" in c.lower()]
-        else:
-            # Default: no access
-            discovered = []
 
         # Apply optional whitelist/blacklist from config
         whitelist = set(config.get("collections_whitelist") or [])
