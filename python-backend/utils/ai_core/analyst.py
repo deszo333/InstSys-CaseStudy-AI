@@ -3371,15 +3371,14 @@ class AIAnalyst:
 
 
 
-
 # --- REPLACE THIS ENTIRE METHOD ---
     def execute_reasoning_plan(self, query: str, session: dict) -> tuple[str, Optional[dict], List[dict]]:
         """
-        [UPGRADED WITH TRIAGE] The main orchestration method.
-        It first runs a "mini-LLM" triage to classify the query,
-        which replaces all the old, brittle policy_engine ambiguity checks.
+        [UPGRADED WITH OFFLINE MODE] The main orchestration method.
+        - If 'offline', it runs a simple Planner -> Synth loop.
+        - If 'online', it first runs a "mini-LLM" triage to classify
+          the query, handles ambiguity, and uses chat history.
         """
-        self.debug("Starting reasoning plan execution...")
         start_time = time.time()
         start_datetime = datetime.now(timezone.utc)
         
@@ -3389,382 +3388,1226 @@ class AIAnalyst:
         plan_hash = None
         
         context = session.get("structured_context", {})
-        
-        # --- NEW "MINI-LLM" TRIAGE STEP ---
-        # This one call replaces all the old ambiguity/clarification logic
-        triage_result = self._run_query_triage(query, session)
-        intent = triage_result.get("intent")
-        
-        if intent == "ANSWER_TO_CLARIFICATION":
-            query = triage_result.get("combined_query", query) # Use the new, complete query
-            context["clarification_pending"] = False
-            self.debug(f"Triage: Proceeding with combined query: {query}")
-            
-        elif intent == "CONVERSATIONAL":
-            self.debug("Triage: Query is conversational. Routing to dedicated synth call.")
-            planner_start_time = time.time() # Log minimal planner time
-            chat_history = self._get_topic_scoped_history(session, self.max_history_turns)
-            planner_duration = time.time() - planner_start_time
 
+        # --- NEW OFFLINE/ONLINE LOGIC ---
+        if self.execution_mode == 'offline':
+            # --- START OFFLINE EXECUTION PATH ---
+            # This path skips Triage, History, and Coreference AI steps.
+            self.debug("Offline mode: Skipping Triage, History, and Coreference AI steps.")
+            chat_history = [] # No history for offline mode
+            
+            plan_json = None
+            final_context = {}
+            error_msg = None
+            results_count = 0
+            
+            outcome = "FAIL_UNKNOWN"
+            execution_mode = "primary"
+            collected_docs = []
+
+            try:
+                max_retries = 5
+                planner_start_time = time.time()
+                
+                # No Coreference-to-Parameter Injection
+                
+                filters_cleared_on_retry = False # Not really used, but kept for consistency
+
+                for attempt in range(max_retries):
+                    self.debug(f"Planner Attempt {attempt + 1}/{max_retries}...")
+                    
+                    # --- Simplified Prompt Generation (Offline) ---
+                    self.debug("-> Using 'Offline Planner Prompt' (no context, no examples).")
+                    dynamic_examples = "" # No examples for offline
+                    
+                    # Use a minimal, empty context
+                    planner_context = {"current_topic": "None.", "active_filters": {}}
+                    structured_context_str = json.dumps(planner_context, indent=2)
+                    sys_prompt_template = PROMPT_TEMPLATES["planner_agent"]
+                    history_for_llm = [] # No history for offline
+                    
+                    # Format the system prompt
+                    prompt_safe_positions = list(self.all_positions) + ["Faculty", "Staff", "Admin"]
+                    sys_prompt = sys_prompt_template.format(
+                        all_programs_list=self.all_programs, all_departments_list=self.all_departments,
+                        all_positions_list=sorted(list(set(prompt_safe_positions))),
+                        all_doc_types_list=self.all_doc_types, all_statuses_list=self.all_statuses,
+                        dynamic_examples=dynamic_examples,
+                        structured_context_str=structured_context_str
+                    )
+                    planner_user_prompt = query
+                    # --- End Simplified Prompt Generation ---
+
+                    plan_raw = self.planner_llm.execute(
+                        system_prompt=sys_prompt, user_prompt=planner_user_prompt,
+                        json_mode=True, phase="planner",
+                        history=history_for_llm
+                    )
+            
+                    plan_json = self._repair_json(plan_raw)
+                    
+                    # --- Plan Validation (Same as Online) ---
+                    is_valid_plan, validation_error = self._validate_plan(plan_json)
+
+                    if is_valid_plan:
+                        self.debug(f"Valid multi-step plan received on attempt {attempt + 1}.")
+                        break # Success!
+                    
+                    self.debug(f"Plan validation failed: {validation_error}")
+                    plan_json = None # Invalidate the broken plan
+                    time.sleep(1)
+                
+                planner_duration = time.time() - planner_start_time
+                
+                if not plan_json:
+                    outcome = "FAIL_PLANNER"
+                    raise ValueError(f"AI failed to select a valid plan after {max_retries} attempts. Last error: {plan_raw}")
+
+                # --- Multi-Step Execution Loop (Same as Online) ---
+                retrieval_start_time = time.time()
+                step_results = {}
+                collected_docs = []
+                plan_steps = plan_json.get("plan", [])
+
+                for i, step in enumerate(plan_steps):
+                    step_num = i + 1
+                    tool_call = step.get("tool_call", {})
+                    tool_name = tool_call.get("tool_name")
+                    params = tool_call.get("parameters", {})
+                    
+                    if not tool_name:
+                        self.debug(f"Step {step_num} is missing a tool_name. Stopping plan.")
+                        break
+                    
+                    try:
+                        resolved_params = self._resolve_placeholders(params, step_results)
+                        params_str = json.dumps(resolved_params)
+                        if '$' in params_str:
+                            unresolved = [v for v in re.findall(r'"(\$.*?)"', params_str)]
+                            if unresolved:
+                                raise ValueError(f"Plan failed at step {step_num}: Required value {unresolved[0]} was not found.")
+                        self.debug(f"   -> Executing Step {step_num}: {tool_name} with params: {resolved_params}")
+                    
+                    except Exception as e:
+                        self.debug(f"Error during placeholder resolution or execution for step {step_num}: {e}")
+                        raise
+                    
+                    if tool_name == "finish_plan":
+                        self.debug("Plan execution complete.")
+                        break
+                    
+                    if tool_name in self.available_tools:
+                        tool_function = self.available_tools[tool_name]
+                        sig = inspect.signature(tool_function)
+                        valid_params = {k: v for k, v in resolved_params.items() if k in sig.parameters}
+                        dropped = [k for k in resolved_params if k not in sig.parameters]
+                        if dropped:
+                            self.debug(f"Dropping unexpected parameters for {tool_name}: {dropped}")
+                        
+                        step_output = tool_function(**valid_params)
+                        step_output_list = step_output if isinstance(step_output, list) else [step_output]
+                        step_results[step_num] = step_output_list
+                        collected_docs.extend(step_output_list)
+                    else:
+                        raise ValueError(f"Plan step {step_num} uses an unknown tool: '{tool_name}'")
+                
+                retrieval_duration = time.time() - retrieval_start_time
+                collected_docs = [doc for doc in collected_docs if doc.get("source_collection") not in ("system_signal", "system_note")]
+                
+                has_errors = any("error" in doc.get("status", "") for doc in collected_docs)
+                is_empty = (not collected_docs or all("empty" in doc.get("status", "") for doc in collected_docs)) and not has_errors
+
+                if has_errors:
+                    execution_mode = "primary"
+                    self.debug(f"Primary plan failed with an error. Reporting as FAIL_EXECUTION.")
+                    outcome = "FAIL_EXECUTION"
+                
+                elif is_empty:
+                    self.debug("Primary plan executed successfully but found no results. (FAIL_EMPTY)")
+                    outcome = "FAIL_EMPTY"
+                
+                else:
+                    outcome = "SUCCESS_DIRECT"
+
+                # --- De-duplication (Same as Online) ---
+                if collected_docs:
+                    self.debug(f"Original unfiltered doc count: {len(collected_docs)}. Starting de-duplication...")
+                    unique_docs = {}
+                    for doc in collected_docs:
+                        try: content_key = json.dumps(doc.get('content'), sort_keys=True)
+                        except TypeError: content_key = str(doc.get('content')) 
+                        if content_key and content_key not in unique_docs:
+                            unique_docs[content_key] = doc
+                    collected_docs = list(unique_docs.values())
+                    self.debug(f"Found {len(collected_docs)} unique documents after de-duplication.")
+
+                # --- Student Grouping (Same as Online) ---
+                if len(collected_docs) > 5:
+                    primary_tool_name = ""
+                    if plan_json and plan_json.get("plan"):
+                        primary_tool_name = plan_json.get("plan", [{}])[0].get("tool_call", {}).get("tool_name", "")
+                    
+                    first_doc_meta = collected_docs[0].get("metadata", {})
+                    is_student_data = "student_id" in first_doc_meta
+
+                    if is_student_data and primary_tool_name == "find_people":
+                        self.debug(f"-> Student result set ({len(collected_docs)} docs) detected for 'find_people'. Restructuring into groups.")
+                        grouped_students = defaultdict(list)
+                        for doc in collected_docs:
+                            meta = doc.get("metadata", {})
+                            group_key = f"{meta.get('course', 'N/A')} - Year {meta.get('year', 'N/A')} - Section {meta.get('section', 'N/A')}"
+                            grouped_students[group_key].append(doc)
+                        grouped_data = [{"source_collection": "grouped_students", "group_name": name, "students": docs} for name, docs in sorted(grouped_students.items())]
+                        collected_docs = grouped_data
+                    elif is_student_data:
+                        self.debug(f"-> Skipping student grouping. Primary tool was '{primary_tool_name}', not 'find_people'.")
+
+                self.debug("\n" + "="*50)
+                self.debug(f"📑 Final {len(collected_docs)} documents being sent to Synthesizer:")
+                try:
+                    debug_output = json.dumps(collected_docs, indent=2)
+                    print(debug_output)
+                except Exception as e:
+                    print(f"Could not print debug output: {e}")
+                self.debug("="*50 + "\n")
+
+                if outcome in ["SUCCESS_DIRECT", "SUCCESS_FALLBACK"]:
+                    results_count = len(collected_docs)
+                    self.debug(f"Cleaning {results_count} docs for Synthesizer...")
+                    cleaned_docs_for_synth = self._clean_documents_for_synthesizer(collected_docs)
+                    final_context = {
+                        "status": "success",
+                        "summary": f"Found {results_count} relevant document(s).",
+                        "data": cleaned_docs_for_synth[:30]
+                    }
+                else:
+                    final_context = {"status": "empty", "summary": "I tried a precise search, but could not find any relevant documents."}
+
+            except Exception as e:
+                if planner_duration == 0.0 and 'planner_start_time' in locals():
+                    planner_duration = time.time() - planner_start_time
+                if retrieval_duration == 0.0 and 'retrieval_start_time' in locals():
+                    retrieval_duration = time.time() - retrieval_start_time
+                import traceback
+                self.debug(f"An unexpected error occurred: {e}")
+                self.debug(f"Error Type: {type(e)}")
+                self.debug(f"Traceback: {traceback.format_exc()}")
+                error_msg = str(e)
+                if outcome == "FAIL_UNKNOWN":
+                    outcome = "FAIL_EXECUTION"
+                final_context = {"status": "error", "summary": f"I ran into a technical problem: {e}"}
+
+            # --- Synthesizer Block (Same as Online) ---
+            self.debug("Synthesizing final answer...")
             synth_start_time = time.time()
+            context_for_llm = json.dumps(final_context, indent=2, ensure_ascii=False)
+            synth_prompt = PROMPT_TEMPLATES["final_synthesizer"].format(context=context_for_llm, query=query)
+            
             final_answer = self.synth_llm.execute(
-                system_prompt="You are a friendly and helpful AI assistant for PDM. Respond naturally and conversationally to the user.",
-                user_prompt=query,
-                history=chat_history or [],
+                system_prompt="You are a careful AI analyst who provides conversational answers based only on the provided facts.",
+                user_prompt=synth_prompt, 
+                history=chat_history, # Will be [] for offline mode
                 phase="synth"
             )
             synth_duration = time.time() - synth_start_time
-            execution_time = time.time() - start_time
-            
-            self.training_system.record_query_result(
-                query=query, plan={"plan": [{"tool_call": {"tool_name": "answer_conversational_query"}}]}, 
-                outcome="SUCCESS_CONVERSATIONAL", 
-                execution_time=execution_time, final_answer=final_answer, results_count=0,
-                timestamp=start_datetime, session_id=session.get('session_id'),
-                planner_duration=planner_duration, retrieval_duration=0.0, synth_duration=synth_duration,
-                planner_model=self.planner_llm.planner_model, synth_model=self.synth_llm.synth_model,
-                plan_hash=None
-            )
-            return final_answer, {"plan": [{"tool_call": {"tool_name": "answer_conversational_query"}}]}, []
 
-        elif intent == "NEW_AMBIGUOUS_QUERY":
-            self.debug("Triage: Query is new and ambiguous. Forcing clarification.")
-            planner_start_time = time.time()
-            # Call the ambiguity resolver prompt to get a good question
-            sys_prompt = PROMPT_TEMPLATES["ambiguity_resolver_prompt"].format(db_schema_summary=self.db_schema_summary)
-            plan_raw = self.planner_llm.execute(
-                system_prompt=sys_prompt, user_prompt=query,
-                json_mode=True, phase="planner", history=[]
+            # --- Post-Synthesis Block (Same as Online) ---
+            corruption_details = sorted(list(self.corruption_warnings)) if self.corruption_warnings else None
+            final_plan_hash = None 
+
+            try:
+                failure_keywords = ["i'm sorry", "unfortunately", "i couldn't find", "i am unable", "not available", "technical problem"]
+                is_successful_answer = not any(keyword in final_answer.lower() for keyword in failure_keywords)
+                if outcome.startswith("SUCCESS") and is_successful_answer and plan_json:
+                    self.debug("Saving example to memory: SUCCESS and final answer looks good.")
+                    final_plan_hash = self._save_dynamic_example(query, plan_json, session, outcome)
+                elif outcome.startswith("SUCCESS"):
+                    self.debug("Skipping example save: Final answer looked like a soft failure.")
+            except Exception as e:
+                self.debug(f"Post-synthesis evaluation or example saving failed: {e}")
+
+            # --- Logging Block (Same as Online) ---
+            execution_time = time.time() - start_time
+            self.training_system.record_query_result(
+                query=query, plan=plan_json, results_count=results_count,
+                execution_time=execution_time, error_msg=error_msg,
+                execution_mode=execution_mode, outcome=outcome, analyst_mode=self.execution_mode,
+                final_answer=final_answer, corruption_details=corruption_details,
+                timestamp=start_datetime, session_id=session.get('session_id'),
+                planner_duration=planner_duration, retrieval_duration=retrieval_duration,
+                synth_duration=synth_duration, planner_model=self.planner_llm.planner_model,
+                synth_model=self.synth_llm.synth_model, plan_hash=final_plan_hash
             )
-            plan_json = self._repair_json(plan_raw)
-            planner_duration = time.time() - planner_start_time
+            
+            return final_answer, plan_json, collected_docs
+            # --- END OFFLINE EXECUTION PATH ---
+
+        else:
+            # --- START ONLINE/SPLIT EXECUTION PATH (Original Code) ---
+            self.debug("Starting reasoning plan execution...")
+            # Note: start_time, start_datetime, durations, and context were initialized above
+            
+            # --- "MINI-LLM" TRIAGE STEP ---
+            triage_result = self._run_query_triage(query, session)
+            intent = triage_result.get("intent")
+            
+            if intent == "ANSWER_TO_CLARIFICATION":
+                query = triage_result.get("combined_query", query)
+                context["clarification_pending"] = False
+                self.debug(f"Triage: Proceeding with combined query: {query}")
+                
+            elif intent == "CONVERSATIONAL":
+                self.debug("Triage: Query is conversational. Routing to dedicated synth call.")
+                planner_start_time = time.time()
+                chat_history = self._get_topic_scoped_history(session, self.max_history_turns)
+                planner_duration = time.time() - planner_start_time
+
+                synth_start_time = time.time()
+                final_answer = self.synth_llm.execute(
+                    system_prompt="You are a friendly and helpful AI assistant for PDM. Respond naturally and conversationally to the user.",
+                    user_prompt=query,
+                    history=chat_history or [],
+                    phase="synth"
+                )
+                synth_duration = time.time() - synth_start_time
+                execution_time = time.time() - start_time
+                
+                self.training_system.record_query_result(
+                    query=query, plan={"plan": [{"tool_call": {"tool_name": "answer_conversational_query"}}]}, 
+                    outcome="SUCCESS_CONVERSATIONAL", 
+                    execution_time=execution_time, final_answer=final_answer, results_count=0,
+                    timestamp=start_datetime, session_id=session.get('session_id'),
+                    planner_duration=planner_duration, retrieval_duration=0.0, synth_duration=synth_duration,
+                    planner_model=self.planner_llm.planner_model, synth_model=self.synth_llm.synth_model,
+                    plan_hash=None
+                )
+                return final_answer, {"plan": [{"tool_call": {"tool_name": "answer_conversational_query"}}]}, []
+
+            elif intent == "NEW_AMBIGUOUS_QUERY":
+                self.debug("Triage: Query is new and ambiguous. Forcing clarification.")
+                planner_start_time = time.time()
+                sys_prompt = PROMPT_TEMPLATES["ambiguity_resolver_prompt"].format(db_schema_summary=self.db_schema_summary)
+                plan_raw = self.planner_llm.execute(
+                    system_prompt=sys_prompt, user_prompt=query,
+                    json_mode=True, phase="planner", history=[]
+                )
+                plan_json = self._repair_json(plan_raw)
+                planner_duration = time.time() - planner_start_time
+                
+                try:
+                    tool_call = plan_json.get("plan", [{}])[0].get("tool_call", {})
+                    if tool_call.get("tool_name") == "request_clarification":
+                        question_for_user = tool_call.get("parameters", {}).get("question_for_user", "Could you provide more details?")
+                    else:
+                        question_for_user = "I'm sorry, I'm not sure what you mean. Could you provide more details?"
+                except Exception:
+                    question_for_user = "I'm not sure what you mean. Could you rephrase that?"
+                
+                context["clarification_pending"] = True
+                context["original_ambiguous_query"] = query
+                self.sessions_collection.update_one(
+                    {"session_id": session["session_id"]},
+                    {"$set": {"structured_context": context, "updated_at": datetime.now(timezone.utc)}},
+                    upsert=True
+                )
+                self._update_session_history(session['session_id'], query, question_for_user)
+                return question_for_user, plan_json, []
+
+            # --- END OF TRIAGE LOGIC ---
+            
+            chat_history = self._get_topic_scoped_history(session, self.max_history_turns)
+            summary = session.get("conversation_summary", "No summary yet.")
+            
+            plan_json = None
+            final_context = {}
+            error_msg = None
+            results_count = 0
+            
+            outcome = "FAIL_UNKNOWN"
+            execution_mode = "primary"
+            collected_docs = []
             
             try:
-                # Extract the question from the plan
-                tool_call = plan_json.get("plan", [{}])[0].get("tool_call", {})
-                if tool_call.get("tool_name") == "request_clarification":
-                    question_for_user = tool_call.get("parameters", {}).get("question_for_user", "Could you provide more details?")
-                else:
-                    # Fallback if the resolver prompt failed for some reason
-                    question_for_user = "I'm sorry, I'm not sure what you mean. Could you provide more details?"
-            except Exception:
-                question_for_user = "I'm not sure what you mean. Could you rephrase that?"
-            
-            # Set the state and return the question
-            context["clarification_pending"] = True
-            context["original_ambiguous_query"] = query
-            # We must manually save the context here since the main loop is exited
-            self.sessions_collection.update_one(
-                {"session_id": session["session_id"]},
-                {"$set": {"structured_context": context, "updated_at": datetime.now(timezone.utc)}},
-                upsert=True
-            )
-            self._update_session_history(session['session_id'], query, question_for_user)
-            return question_for_user, plan_json, []
+                max_retries = 5
+                planner_start_time = time.time()
 
-        # --- END OF TRIAGE LOGIC ---
-        # If we are here, intent is "VALID_NEW_QUERY" and we proceed to the main planner
-        
-        chat_history = self._get_topic_scoped_history(session, self.max_history_turns)
-        summary = session.get("conversation_summary", "No summary yet.")
-        
-        plan_json = None
-        final_context = {}
-        error_msg = None
-        results_count = 0
-        
-        outcome = "FAIL_UNKNOWN"
-        execution_mode = "primary"
-        collected_docs = []
-        
-        try:
-            max_retries = 5
-            planner_start_time = time.time()
-
-            # Coreference-to-Parameter Injection
-            coref_params = self._coref_to_params(query, session)
-            if coref_params:
-                self.debug(f"Injecting coreference params into query: {coref_params}")
-                query = f"{query}\n\n[System Hint: The pronoun in the query (he/she/his/her) refers to: {coref_params.get('person_name')}]"
-            
-            filters_cleared_on_retry = False
-
-            for attempt in range(max_retries):
-                self.debug(f"Planner Attempt {attempt + 1}/{max_retries}...")
+                coref_params = self._coref_to_params(query, session)
+                if coref_params:
+                    self.debug(f"Injecting coreference params into query: {coref_params}")
+                    query = f"{query}\n\n[System Hint: The pronoun in the query (he/she/his/her) refers to: {coref_params.get('person_name')}]"
                 
-                # --- Prompt Generation ---
-                if filters_cleared_on_retry:
-                    # 422 Recovery: Retrying with a minimal prompt
-                    self.debug("!!! 422 Recovery: Retrying with a minimal prompt (no context, no examples).")
-                    planner_context = {"current_topic": "None.", "active_filters": {}}
-                    structured_context_str = json.dumps(planner_context, indent=2)
-                    dynamic_examples = ""
-                    sys_prompt_template = PROMPT_TEMPLATES["planner_agent"]
-                    history_for_llm = []
-                else:
-                    # Standard Full Prompt
-                    self.debug("-> Using 'Full Planner Prompt' with context.")
-                    dynamic_examples = self._load_dynamic_examples(query)
+                filters_cleared_on_retry = False
+
+                for attempt in range(max_retries):
+                    self.debug(f"Planner Attempt {attempt + 1}/{max_retries}...")
                     
-                    full_context = session.get("structured_context", {})
-                    planner_context = {
-                        "current_topic": full_context.get("current_topic"),
-                        "active_filters": {}
-                    }
-                    query_lower = query.strip().lower()
-                    new_topic_starters = ["who is", "what is", "what are", "show me", "list", "find", "get", "compare"]
-                    is_new_topic = any(query_lower.startswith(starter) for starter in new_topic_starters)
-                    
-                    if not is_new_topic:
-                        self.debug("Query seems like a follow-up. Passing active filters.")
-                        planner_context["active_filters"] = full_context.get("active_filters", {})
+                    if filters_cleared_on_retry:
+                        self.debug("!!! 422 Recovery: Retrying with a minimal prompt (no context, no examples).")
+                        planner_context = {"current_topic": "None.", "active_filters": {}}
+                        structured_context_str = json.dumps(planner_context, indent=2)
+                        dynamic_examples = ""
+                        sys_prompt_template = PROMPT_TEMPLATES["planner_agent"]
+                        history_for_llm = []
                     else:
-                        self.debug("Query seems like a new topic. Wiping active filters for Planner.")
+                        self.debug("-> Using 'Full Planner Prompt' with context.")
+                        dynamic_examples = self._load_dynamic_examples(query)
+                        
+                        full_context = session.get("structured_context", {})
+                        planner_context = {
+                            "current_topic": full_context.get("current_topic"),
+                            "active_filters": {}
+                        }
+                        query_lower = query.strip().lower()
+                        new_topic_starters = ["who is", "what is", "what are", "show me", "list", "find", "get", "compare"]
+                        is_new_topic = any(query_lower.startswith(starter) for starter in new_topic_starters)
+                        
+                        if not is_new_topic:
+                            self.debug("Query seems like a follow-up. Passing active filters.")
+                            planner_context["active_filters"] = full_context.get("active_filters", {})
+                        else:
+                            self.debug("Query seems like a new topic. Wiping active filters for Planner.")
+                        
+                        structured_context_str = json.dumps(planner_context, indent=2)
+                        self.debug(f"Sending pruned context to Planner: {structured_context_str}")
+                        sys_prompt_template = PROMPT_TEMPLATES["planner_agent"]
+                        history_for_llm = chat_history
                     
-                    structured_context_str = json.dumps(planner_context, indent=2)
-                    self.debug(f"Sending pruned context to Planner: {structured_context_str}")
-                    sys_prompt_template = PROMPT_TEMPLATES["planner_agent"]
-                    history_for_llm = chat_history
+                    prompt_safe_positions = list(self.all_positions) + ["Faculty", "Staff", "Admin"]
+                    sys_prompt = sys_prompt_template.format(
+                        all_programs_list=self.all_programs, all_departments_list=self.all_departments,
+                        all_positions_list=sorted(list(set(prompt_safe_positions))),
+                        all_doc_types_list=self.all_doc_types, all_statuses_list=self.all_statuses,
+                        dynamic_examples=dynamic_examples,
+                        structured_context_str=structured_context_str
+                    )
+                    planner_user_prompt = query
+
+                    plan_raw = self.planner_llm.execute(
+                        system_prompt=sys_prompt, user_prompt=planner_user_prompt,
+                        json_mode=True, phase="planner",
+                        history=history_for_llm
+                    )
+            
+                    plan_json = self._repair_json(plan_raw)
+                    
+                    is_valid_plan, validation_error = self._validate_plan(plan_json)
+
+                    if is_valid_plan:
+                        self.debug(f"Valid multi-step plan received on attempt {attempt + 1}.")
+                        break
+                    
+                    self.debug(f"Plan validation failed: {validation_error}")
+                    plan_json = None
+                    
+                    if "422" in plan_raw:
+                        self.debug("!!! 422 Error detected. The API rejected the context.")
+                        if not filters_cleared_on_retry:
+                            self.debug("   -> Will retry ONCE with all active_filters cleared.")
+                            filters_cleared_on_retry = True
+                        else:
+                            self.debug("   -> Already retried with cleared filters. Failing permanently.")
+                            break
+                    else:
+                        self.debug(f"Attempt {attempt + 1} failed (Not a 422). Retrying...")
+                    time.sleep(1)
+                
+                planner_duration = time.time() - planner_start_time
+                
+                if not plan_json:
+                    outcome = "FAIL_PLANNER"
+                    raise ValueError(f"AI failed to select a valid plan after {max_retries} attempts. Last error: {plan_raw}")
+
+                # --- Multi-Step Execution Loop ---
+                retrieval_start_time = time.time()
+                step_results = {}
+                collected_docs = []
+                plan_steps = plan_json.get("plan", [])
+
+                for i, step in enumerate(plan_steps):
+                    step_num = i + 1
+                    tool_call = step.get("tool_call", {})
+                    tool_name = tool_call.get("tool_name")
+                    params = tool_call.get("parameters", {})
+                    
+                    if not tool_name:
+                        self.debug(f"Step {step_num} is missing a tool_name. Stopping plan.")
+                        break
+                    
+                    try:
+                        resolved_params = self._resolve_placeholders(params, step_results)
+                        params_str = json.dumps(resolved_params)
+                        if '$' in params_str:
+                            unresolved = [v for v in re.findall(r'"(\$.*?)"', params_str)]
+                            if unresolved:
+                                raise ValueError(f"Plan failed at step {step_num}: Required value {unresolved[0]} was not found.")
+                        self.debug(f"   -> Executing Step {step_num}: {tool_name} with params: {resolved_params}")
+                    
+                    except Exception as e:
+                        self.debug(f"Error during placeholder resolution or execution for step {step_num}: {e}")
+                        raise
+                    
+                    if tool_name == "finish_plan":
+                        self.debug("Plan execution complete.")
+                        break
+                    
+                    if tool_name in self.available_tools:
+                        tool_function = self.available_tools[tool_name]
+                        sig = inspect.signature(tool_function)
+                        valid_params = {k: v for k, v in resolved_params.items() if k in sig.parameters}
+                        dropped = [k for k in resolved_params if k not in sig.parameters]
+                        if dropped:
+                            self.debug(f"Dropping unexpected parameters for {tool_name}: {dropped}")
+                        
+                        step_output = tool_function(**valid_params)
+                        step_output_list = step_output if isinstance(step_output, list) else [step_output]
+                        step_results[step_num] = step_output_list
+                        collected_docs.extend(step_output_list)
+                    else:
+                        raise ValueError(f"Plan step {step_num} uses an unknown tool: '{tool_name}'")
+                
+                retrieval_duration = time.time() - retrieval_start_time
+                collected_docs = [doc for doc in collected_docs if doc.get("source_collection") not in ("system_signal", "system_note")]
+                
+                has_errors = any("error" in doc.get("status", "") for doc in collected_docs)
+                is_empty = (not collected_docs or all("empty" in doc.get("status", "") for doc in collected_docs)) and not has_errors
+
+                if has_errors:
+                    execution_mode = "primary"
+                    self.debug(f"Primary plan failed with an error. Reporting as FAIL_EXECUTION.")
+                    outcome = "FAIL_EXECUTION"
+                
+                elif is_empty:
+                    self.debug("Primary plan executed successfully but found no results. (FAIL_EMPTY)")
+                    outcome = "FAIL_EMPTY"
+                
+                else:
+                    outcome = "SUCCESS_DIRECT"
+
+                if collected_docs:
+                    self.debug(f"Original unfiltered doc count: {len(collected_docs)}. Starting de-duplication...")
+                    unique_docs = {}
+                    for doc in collected_docs:
+                        try: content_key = json.dumps(doc.get('content'), sort_keys=True)
+                        except TypeError: content_key = str(doc.get('content')) 
+                        if content_key and content_key not in unique_docs:
+                            unique_docs[content_key] = doc
+                    collected_docs = list(unique_docs.values())
+                    self.debug(f"Found {len(collected_docs)} unique documents after de-duplication.")
+
+                if len(collected_docs) > 5:
+                    primary_tool_name = ""
+                    if plan_json and plan_json.get("plan"):
+                        primary_tool_name = plan_json.get("plan", [{}])[0].get("tool_call", {}).get("tool_name", "")
+                    
+                    first_doc_meta = collected_docs[0].get("metadata", {})
+                    is_student_data = "student_id" in first_doc_meta
+
+                    if is_student_data and primary_tool_name == "find_people":
+                        self.debug(f"-> Student result set ({len(collected_docs)} docs) detected for 'find_people'. Restructuring into groups.")
+                        grouped_students = defaultdict(list)
+                        for doc in collected_docs:
+                            meta = doc.get("metadata", {})
+                            group_key = f"{meta.get('course', 'N/A')} - Year {meta.get('year', 'N/A')} - Section {meta.get('section', 'N/A')}"
+                            grouped_students[group_key].append(doc)
+                        grouped_data = [{"source_collection": "grouped_students", "group_name": name, "students": docs} for name, docs in sorted(grouped_students.items())]
+                        collected_docs = grouped_data
+                    elif is_student_data:
+                        self.debug(f"-> Skipping student grouping. Primary tool was '{primary_tool_name}', not 'find_people'.")
+
+                self.debug("\n" + "="*50)
+                self.debug(f"📑 Final {len(collected_docs)} documents being sent to Synthesizer:")
+                try:
+                    debug_output = json.dumps(collected_docs, indent=2)
+                    print(debug_output)
+                except Exception as e:
+                    print(f"Could not print debug output: {e}")
+                self.debug("="*50 + "\n")
+
+                if outcome in ["SUCCESS_DIRECT", "SUCCESS_FALLBACK"]:
+                    results_count = len(collected_docs)
+                    self.debug(f"Cleaning {results_count} docs for Synthesizer...")
+                    cleaned_docs_for_synth = self._clean_documents_for_synthesizer(collected_docs)
+                    final_context = {
+                        "status": "success",
+                        "summary": f"Found {results_count} relevant document(s).",
+                        "data": cleaned_docs_for_synth[:30]
+                    }
+                else:
+                    final_context = {"status": "empty", "summary": "I tried a precise search and a broad search, but could not find any relevant documents."}
+
+            except Exception as e:
+                if planner_duration == 0.0 and 'planner_start_time' in locals():
+                    planner_duration = time.time() - planner_start_time
+                if retrieval_duration == 0.0 and 'retrieval_start_time' in locals():
+                    retrieval_duration = time.time() - retrieval_start_time
+                import traceback
+                self.debug(f"An unexpected error occurred: {e}")
+                self.debug(f"Error Type: {type(e)}")
+                self.debug(f"Traceback: {traceback.format_exc()}")
+                error_msg = str(e)
+                if outcome == "FAIL_UNKNOWN":
+                    outcome = "FAIL_EXECUTION"
+                final_context = {"status": "error", "summary": f"I ran into a technical problem: {e}"}
+
+            # --- Synthesizer Block ---
+            self.debug("Synthesizing final answer...")
+            synth_start_time = time.time()
+            context_for_llm = json.dumps(final_context, indent=2, ensure_ascii=False)
+            synth_prompt = PROMPT_TEMPLATES["final_synthesizer"].format(context=context_for_llm, query=query)
+            
+            final_answer = self.synth_llm.execute(
+                system_prompt="You are a careful AI analyst who provides conversational answers based only on the provided facts.",
+                user_prompt=synth_prompt, 
+                history=chat_history if not filters_cleared_on_retry else [],
+                phase="synth"
+            )
+            synth_duration = time.time() - synth_start_time
+
+            # --- Post-Synthesis Block ---
+            corruption_details = sorted(list(self.corruption_warnings)) if self.corruption_warnings else None
+            final_plan_hash = None 
+
+            try:
+                failure_keywords = ["i'm sorry", "unfortunately", "i couldn't find", "i am unable", "not available", "technical problem"]
+                is_successful_answer = not any(keyword in final_answer.lower() for keyword in failure_keywords)
+                if outcome.startswith("SUCCESS") and is_successful_answer and plan_json:
+                    self.debug("Saving example to memory: SUCCESS and final answer looks good.")
+                    final_plan_hash = self._save_dynamic_example(query, plan_json, session, outcome)
+                elif outcome.startswith("SUCCESS"):
+                    self.debug("Skipping example save: Final answer looked like a soft failure.")
+            except Exception as e:
+                self.debug(f"Post-synthesis evaluation or example saving failed: {e}")
+
+            # --- Logging Block ---
+            execution_time = time.time() - start_time
+            self.training_system.record_query_result(
+                query=query, plan=plan_json, results_count=results_count,
+                execution_time=execution_time, error_msg=error_msg,
+                execution_mode=execution_mode, outcome=outcome, analyst_mode=self.execution_mode,
+                final_answer=final_answer, corruption_details=corruption_details,
+                timestamp=start_datetime, session_id=session.get('session_id'),
+                planner_duration=planner_duration, retrieval_duration=retrieval_duration,
+                synth_duration=synth_duration, planner_model=self.planner_llm.planner_model,
+                synth_model=self.synth_llm.synth_model, plan_hash=final_plan_hash
+            )
+            
+            return final_answer, plan_json, collected_docs
+            # --- END ONLINE/SPLIT EXECUTION PATH ---
+
+
+
+
+# --- REPLACE THIS ENTIRE METHOD ---
+    def execute_reasoning_plan(self, query: str, session: dict) -> tuple[str, Optional[dict], List[dict]]:
+        """
+        [UPGRADED WITH OFFLINE MODE V2] The main orchestration method.
+        - If 'offline', it runs a simple *single-step* Planner -> Synth loop.
+        - If 'online', it first runs a "mini-LLM" triage to classify
+          the query, handles ambiguity, and uses chat history.
+        """
+        start_time = time.time()
+        start_datetime = datetime.now(timezone.utc)
+        
+        planner_duration = 0.0
+        retrieval_duration = 0.0
+        synth_duration = 0.0
+        plan_hash = None
+        
+        context = session.get("structured_context", {})
+
+        # --- NEW OFFLINE/ONLINE LOGIC ---
+        if self.execution_mode == 'offline':
+            # --- START OFFLINE EXECUTION PATH (Single-Step) ---
+            self.debug("Offline mode: Running SINGLE-STEP plan. Skipping Triage, History, and Coreference.")
+            chat_history = [] # No history for offline mode
+            
+            plan_json = None
+            final_context = {}
+            error_msg = None
+            results_count = 0
+            
+            outcome = "FAIL_UNKNOWN"
+            execution_mode = "primary"
+            collected_docs = []
+
+            try:
+                planner_start_time = time.time()
+                
+                # --- Simplified Prompt Generation (Offline) ---
+                self.debug("-> Using 'planner_agent_offline' (single-step).")
+                dynamic_examples = "" # No examples for offline
                 
                 # Format the system prompt
                 prompt_safe_positions = list(self.all_positions) + ["Faculty", "Staff", "Admin"]
-                sys_prompt = sys_prompt_template.format(
+                sys_prompt = PROMPT_TEMPLATES["planner_agent_offline"].format(
                     all_programs_list=self.all_programs, all_departments_list=self.all_departments,
                     all_positions_list=sorted(list(set(prompt_safe_positions))),
                     all_doc_types_list=self.all_doc_types, all_statuses_list=self.all_statuses,
-                    dynamic_examples=dynamic_examples,
-                    structured_context_str=structured_context_str
+                    dynamic_examples=dynamic_examples
+                    # Note: No structured_context_str for this prompt
                 )
                 planner_user_prompt = query
-                # --- End Prompt Generation ---
+                # --- End Simplified Prompt Generation ---
 
                 plan_raw = self.planner_llm.execute(
                     system_prompt=sys_prompt, user_prompt=planner_user_prompt,
                     json_mode=True, phase="planner",
-                    history=history_for_llm
+                    history=chat_history # Will be []
                 )
         
-                plan_json = self._repair_json(plan_raw)
+                # --- Manually Build Plan ---
+                # The offline planner returns a single tool call, not a multi-step plan.
+                tool_call_dict = self._repair_json(plan_raw)
                 
-                # --- Plan Validation ---
-                is_valid_plan, validation_error = self._validate_plan(plan_json)
+                if not tool_call_dict or "tool_name" not in tool_call_dict:
+                    planner_duration = time.time() - planner_start_time
+                    outcome = "FAIL_PLANNER"
+                    raise ValueError(f"AI failed to select a valid tool. Last error: {plan_raw}")
 
-                if is_valid_plan:
-                    self.debug(f"Valid multi-step plan received on attempt {attempt + 1}.")
-                    break # Success!
+                # We manually wrap the single tool call into a multi-step
+                # plan structure so the rest of the code (logging, execution loop) works.
+                plan_json = {
+                    "plan": [
+                        {"tool_call": tool_call_dict},
+                        {"tool_call": {"tool_name": "finish_plan", "parameters": {}}}
+                    ]
+                }
+                self.debug(f"Offline planner selected tool: {tool_call_dict.get('tool_name')}")
                 
-                self.debug(f"Plan validation failed: {validation_error}")
-                plan_json = None # Invalidate the broken plan
-                # --- End Plan Validation ---
+                planner_duration = time.time() - planner_start_time
 
-                # --- 422 Error Retry Logic ---
-                if "422" in plan_raw:
-                    self.debug("!!! 422 Error detected. The API rejected the context.")
-                    if not filters_cleared_on_retry:
-                        self.debug("   -> Will retry ONCE with all active_filters cleared.")
-                        filters_cleared_on_retry = True
-                    else:
-                        self.debug("   -> Already retried with cleared filters. Failing permanently.")
+                # --- Multi-Step Execution Loop (now runs our 2-step plan) ---
+                retrieval_start_time = time.time()
+                step_results = {}
+                collected_docs = []
+                plan_steps = plan_json.get("plan", []) # Will be [tool_call, finish_plan]
+
+                for i, step in enumerate(plan_steps):
+                    step_num = i + 1
+                    tool_call = step.get("tool_call", {})
+                    tool_name = tool_call.get("tool_name")
+                    params = tool_call.get("parameters", {})
+                    
+                    if not tool_name:
+                        self.debug(f"Step {step_num} is missing a tool_name. Stopping plan.")
                         break
-                else:
-                    self.debug(f"Attempt {attempt + 1} failed (Not a 422). Retrying...")
-                # --- End 422 Logic ---
-                time.sleep(1)
-            
-            planner_duration = time.time() - planner_start_time
-            
-            if not plan_json:
-                outcome = "FAIL_PLANNER"
-                raise ValueError(f"AI failed to select a valid plan after {max_retries} attempts. Last error: {plan_raw}")
-
-            # --- Multi-Step Execution Loop ---
-            retrieval_start_time = time.time()
-            step_results = {}
-            collected_docs = []
-            plan_steps = plan_json.get("plan", [])
-
-            for i, step in enumerate(plan_steps):
-                step_num = i + 1
-                tool_call = step.get("tool_call", {})
-                tool_name = tool_call.get("tool_name")
-                params = tool_call.get("parameters", {})
+                    
+                    # No placeholder resolution needed for this simple plan, but we'll keep the logic
+                    # in case the offline prompt is ever changed to be multi-step.
+                    try:
+                        resolved_params = self._resolve_placeholders(params, step_results)
+                        self.debug(f"   -> Executing Step {step_num}: {tool_name} with params: {resolved_params}")
+                    
+                    except Exception as e:
+                        self.debug(f"Error during placeholder resolution for step {step_num}: {e}")
+                        raise
+                    
+                    if tool_name == "finish_plan":
+                        self.debug("Plan execution complete.")
+                        break
+                    
+                    if tool_name in self.available_tools:
+                        tool_function = self.available_tools[tool_name]
+                        sig = inspect.signature(tool_function)
+                        valid_params = {k: v for k, v in resolved_params.items() if k in sig.parameters}
+                        
+                        step_output = tool_function(**valid_params)
+                        step_output_list = step_output if isinstance(step_output, list) else [step_output]
+                        step_results[step_num] = step_output_list
+                        collected_docs.extend(step_output_list)
+                    else:
+                        raise ValueError(f"Plan step {step_num} uses an unknown tool: '{tool_name}'")
                 
-                if not tool_name:
-                    self.debug(f"Step {step_num} is missing a tool_name. Stopping plan.")
-                    break
+                retrieval_duration = time.time() - retrieval_start_time
+                collected_docs = [doc for doc in collected_docs if doc.get("source_collection") not in ("system_signal", "system_note")]
+                
+                has_errors = any("error" in doc.get("status", "") for doc in collected_docs)
+                is_empty = (not collected_docs or all("empty" in doc.get("status", "") for doc in collected_docs)) and not has_errors
+
+                if has_errors:
+                    execution_mode = "primary"
+                    self.debug(f"Primary plan failed with an error. Reporting as FAIL_EXECUTION.")
+                    outcome = "FAIL_EXECUTION"
+                
+                elif is_empty:
+                    self.debug("Primary plan executed successfully but found no results. (FAIL_EMPTY)")
+                    outcome = "FAIL_EMPTY"
+                
+                else:
+                    outcome = "SUCCESS_DIRECT"
+
+                # --- De-duplication (Same as Online) ---
+                if collected_docs:
+                    self.debug(f"Original unfiltered doc count: {len(collected_docs)}. Starting de-duplication...")
+                    unique_docs = {}
+                    for doc in collected_docs:
+                        try: content_key = json.dumps(doc.get('content'), sort_keys=True)
+                        except TypeError: content_key = str(doc.get('content')) 
+                        if content_key and content_key not in unique_docs:
+                            unique_docs[content_key] = doc
+                    collected_docs = list(unique_docs.values())
+                    self.debug(f"Found {len(collected_docs)} unique documents after de-duplication.")
+
+                # --- Student Grouping (Same as Online) ---
+                if len(collected_docs) > 5:
+                    primary_tool_name = ""
+                    if plan_json and plan_json.get("plan"):
+                        primary_tool_name = plan_json.get("plan", [{}])[0].get("tool_call", {}).get("tool_name", "")
+                    
+                    first_doc_meta = collected_docs[0].get("metadata", {})
+                    is_student_data = "student_id" in first_doc_meta
+
+                    if is_student_data and primary_tool_name == "find_people":
+                        self.debug(f"-> Student result set ({len(collected_docs)} docs) detected for 'find_people'. Restructuring into groups.")
+                        grouped_students = defaultdict(list)
+                        for doc in collected_docs:
+                            meta = doc.get("metadata", {})
+                            group_key = f"{meta.get('course', 'N/A')} - Year {meta.get('year', 'N/A')} - Section {meta.get('section', 'N/A')}"
+                            grouped_students[group_key].append(doc)
+                        grouped_data = [{"source_collection": "grouped_students", "group_name": name, "students": docs} for name, docs in sorted(grouped_students.items())]
+                        collected_docs = grouped_data
+                    elif is_student_data:
+                        self.debug(f"-> Skipping student grouping. Primary tool was '{primary_tool_name}', not 'find_people'.")
+
+                self.debug("\n" + "="*50)
+                self.debug(f"📑 Final {len(collected_docs)} documents being sent to Synthesizer:")
+                try:
+                    debug_output = json.dumps(collected_docs, indent=2)
+                    print(debug_output)
+                except Exception as e:
+                    print(f"Could not print debug output: {e}")
+                self.debug("="*50 + "\n")
+
+                if outcome in ["SUCCESS_DIRECT", "SUCCESS_FALLBACK"]:
+                    results_count = len(collected_docs)
+                    self.debug(f"Cleaning {results_count} docs for Synthesizer...")
+                    cleaned_docs_for_synth = self._clean_documents_for_synthesizer(collected_docs)
+                    final_context = {
+                        "status": "success",
+                        "summary": f"Found {results_count} relevant document(s).",
+                        "data": cleaned_docs_for_synth[:30]
+                    }
+                else:
+                    final_context = {"status": "empty", "summary": "I tried a precise search, but could not find any relevant documents."}
+
+            except Exception as e:
+                if planner_duration == 0.0 and 'planner_start_time' in locals():
+                    planner_duration = time.time() - planner_start_time
+                if retrieval_duration == 0.0 and 'retrieval_start_time' in locals():
+                    retrieval_duration = time.time() - retrieval_start_time
+                import traceback
+                self.debug(f"An unexpected error occurred: {e}")
+                self.debug(f"Error Type: {type(e)}")
+                self.debug(f"Traceback: {traceback.format_exc()}")
+                error_msg = str(e)
+                if outcome == "FAIL_UNKNOWN":
+                    outcome = "FAIL_EXECUTION"
+                final_context = {"status": "error", "summary": f"I ran into a technical problem: {e}"}
+
+            # --- Synthesizer Block (Using OFFLINE prompt) ---
+            self.debug("Synthesizing final answer...")
+            synth_start_time = time.time()
+            context_for_llm = json.dumps(final_context, indent=2, ensure_ascii=False)
+            
+            # --- THIS IS THE CHANGE ---
+            synth_prompt = PROMPT_TEMPLATES["final_synthesizer_offline"].format(context=context_for_llm, query=query)
+            
+            final_answer = self.synth_llm.execute(
+                system_prompt="You are a careful AI analyst who provides conversational answers based only on the provided facts.",
+                user_prompt=synth_prompt, 
+                history=chat_history, # Will be [] for offline mode
+                phase="synth"
+            )
+            # --- END OF CHANGE ---
+            
+            synth_duration = time.time() - synth_start_time
+
+            # --- Post-Synthesis Block (Same as Online) ---
+            corruption_details = sorted(list(self.corruption_warnings)) if self.corruption_warnings else None
+            final_plan_hash = None 
+
+            try:
+                failure_keywords = ["i'm sorry", "unfortunately", "i couldn't find", "i am unable", "not available", "technical problem"]
+                is_successful_answer = not any(keyword in final_answer.lower() for keyword in failure_keywords)
+                if outcome.startswith("SUCCESS") and is_successful_answer and plan_json:
+                    self.debug("Saving example to memory: SUCCESS and final answer looks good.")
+                    final_plan_hash = self._save_dynamic_example(query, plan_json, session, outcome)
+                elif outcome.startswith("SUCCESS"):
+                    self.debug("Skipping example save: Final answer looked like a soft failure.")
+            except Exception as e:
+                self.debug(f"Post-synthesis evaluation or example saving failed: {e}")
+
+            # --- Logging Block (Same as Online) ---
+            execution_time = time.time() - start_time
+            self.training_system.record_query_result(
+                query=query, plan=plan_json, results_count=results_count,
+                execution_time=execution_time, error_msg=error_msg,
+                execution_mode=execution_mode, outcome=outcome, analyst_mode=self.execution_mode,
+                final_answer=final_answer, corruption_details=corruption_details,
+                timestamp=start_datetime, session_id=session.get('session_id'),
+                planner_duration=planner_duration, retrieval_duration=retrieval_duration,
+                synth_duration=synth_duration, planner_model=self.planner_llm.planner_model,
+                synth_model=self.synth_llm.synth_model, plan_hash=final_plan_hash
+            )
+            
+            return final_answer, plan_json, collected_docs
+            # --- END OFFLINE EXECUTION PATH ---
+
+        else:
+            # --- START ONLINE/SPLIT EXECUTION PATH (Original Code) ---
+            self.debug("Starting reasoning plan execution...")
+            # Note: start_time, start_datetime, durations, and context were initialized above
+            
+            # --- "MINI-LLM" TRIAGE STEP ---
+            triage_result = self._run_query_triage(query, session)
+            intent = triage_result.get("intent")
+            
+            if intent == "ANSWER_TO_CLARIFICATION":
+                query = triage_result.get("combined_query", query)
+                context["clarification_pending"] = False
+                self.debug(f"Triage: Proceeding with combined query: {query}")
+                
+            elif intent == "CONVERSATIONAL":
+                self.debug("Triage: Query is conversational. Routing to dedicated synth call.")
+                planner_start_time = time.time()
+                chat_history = self._get_topic_scoped_history(session, self.max_history_turns)
+                planner_duration = time.time() - planner_start_time
+
+                synth_start_time = time.time()
+                final_answer = self.synth_llm.execute(
+                    system_prompt="You are a friendly and helpful AI assistant for PDM. Respond naturally and conversationally to the user.",
+                    user_prompt=query,
+                    history=chat_history or [],
+                    phase="synth"
+                )
+                synth_duration = time.time() - synth_start_time
+                execution_time = time.time() - start_time
+                
+                self.training_system.record_query_result(
+                    query=query, plan={"plan": [{"tool_call": {"tool_name": "answer_conversational_query"}}]}, 
+                    outcome="SUCCESS_CONVERSATIONAL", 
+                    execution_time=execution_time, final_answer=final_answer, results_count=0,
+                    timestamp=start_datetime, session_id=session.get('session_id'),
+                    planner_duration=planner_duration, retrieval_duration=0.0, synth_duration=synth_duration,
+                    planner_model=self.planner_llm.planner_model, synth_model=self.synth_llm.synth_model,
+                    plan_hash=None
+                )
+                return final_answer, {"plan": [{"tool_call": {"tool_name": "answer_conversational_query"}}]}, []
+
+            elif intent == "NEW_AMBIGUOUS_QUERY":
+                self.debug("Triage: Query is new and ambiguous. Forcing clarification.")
+                planner_start_time = time.time()
+                sys_prompt = PROMPT_TEMPLATES["ambiguity_resolver_prompt"].format(db_schema_summary=self.db_schema_summary)
+                plan_raw = self.planner_llm.execute(
+                    system_prompt=sys_prompt, user_prompt=query,
+                    json_mode=True, phase="planner", history=[]
+                )
+                plan_json = self._repair_json(plan_raw)
+                planner_duration = time.time() - planner_start_time
                 
                 try:
-                    resolved_params = self._resolve_placeholders(params, step_results)
-                    params_str = json.dumps(resolved_params)
-                    if '$' in params_str:
-                        unresolved = [v for v in re.findall(r'"(\$.*?)"', params_str)]
-                        if unresolved:
-                            raise ValueError(f"Plan failed at step {step_num}: Required value {unresolved[0]} was not found.")
-                    self.debug(f"   -> Executing Step {step_num}: {tool_name} with params: {resolved_params}")
+                    tool_call = plan_json.get("plan", [{}])[0].get("tool_call", {})
+                    if tool_call.get("tool_name") == "request_clarification":
+                        question_for_user = tool_call.get("parameters", {}).get("question_for_user", "Could you provide more details?")
+                    else:
+                        question_for_user = "I'm sorry, I'm not sure what you mean. Could you provide more details?"
+                except Exception:
+                    question_for_user = "I'm not sure what you mean. Could you rephrase that?"
                 
-                except Exception as e:
-                    self.debug(f"Error during placeholder resolution or execution for step {step_num}: {e}")
-                    raise
-                
-                # --- Handle Special Tools ---
-                if tool_name == "finish_plan":
-                    self.debug("Plan execution complete.")
-                    break # Exit the loop
-                
-                # --- Execute Standard Data Tools ---
-                if tool_name in self.available_tools:
-                    tool_function = self.available_tools[tool_name]
-                    sig = inspect.signature(tool_function)
-                    valid_params = {k: v for k, v in resolved_params.items() if k in sig.parameters}
-                    dropped = [k for k in resolved_params if k not in sig.parameters]
-                    if dropped:
-                        self.debug(f"Dropping unexpected parameters for {tool_name}: {dropped}")
-                    
-                    step_output = tool_function(**valid_params)
-                    step_output_list = step_output if isinstance(step_output, list) else [step_output]
-                    step_results[step_num] = step_output_list
-                    collected_docs.extend(step_output_list)
-                else:
-                    raise ValueError(f"Plan step {step_num} uses an unknown tool: '{tool_name}'")
+                context["clarification_pending"] = True
+                context["original_ambiguous_query"] = query
+                self.sessions_collection.update_one(
+                    {"session_id": session["session_id"]},
+                    {"$set": {"structured_context": context, "updated_at": datetime.now(timezone.utc)}},
+                    upsert=True
+                )
+                self._update_session_history(session['session_id'], query, question_for_user)
+                return question_for_user, plan_json, []
+
+            # --- END OF TRIAGE LOGIC ---
             
-            # --- End Multi-Step Loop ---
-
-            retrieval_duration = time.time() - retrieval_start_time
-            collected_docs = [doc for doc in collected_docs if doc.get("source_collection") not in ("system_signal", "system_note")]
+            chat_history = self._get_topic_scoped_history(session, self.max_history_turns)
+            summary = session.get("conversation_summary", "No summary yet.")
             
-            has_errors = any("error" in doc.get("status", "") for doc in collected_docs)
-            is_empty = (not collected_docs or all("empty" in doc.get("status", "") for doc in collected_docs)) and not has_errors
-
-            if has_errors:
-                execution_mode = "primary" # It never went to fallback
-                self.debug(f"Primary plan failed with an error. Reporting as FAIL_EXECUTION.")
-                outcome = "FAIL_EXECUTION" # <-- The new, direct failure outcome
+            plan_json = None
+            final_context = {}
+            error_msg = None
+            results_count = 0
             
-            elif is_empty:
-                self.debug("Primary plan executed successfully but found no results. (FAIL_EMPTY)")
-                outcome = "FAIL_EMPTY"
+            outcome = "FAIL_UNKNOWN"
+            execution_mode = "primary"
+            collected_docs = []
             
-            else:
-                outcome = "SUCCESS_DIRECT"
-
-            # De-duplication
-            if collected_docs:
-                self.debug(f"Original unfiltered doc count: {len(collected_docs)}. Starting de-duplication...")
-                unique_docs = {}
-                for doc in collected_docs:
-                    try: content_key = json.dumps(doc.get('content'), sort_keys=True)
-                    except TypeError: content_key = str(doc.get('content')) 
-                    if content_key and content_key not in unique_docs:
-                        unique_docs[content_key] = doc
-                collected_docs = list(unique_docs.values())
-                self.debug(f"Found {len(collected_docs)} unique documents after de-duplication.")
-
-            # --- REPLACE THE ENTIRE "Student Grouping" BLOCK WITH THIS ---
-
-            # Student Grouping
-            if len(collected_docs) > 5:
-                # Check what tool the planner *intended* to run
-                primary_tool_name = ""
-                if plan_json and plan_json.get("plan"):
-                    primary_tool_name = plan_json.get("plan", [{}])[0].get("tool_call", {}).get("tool_name", "")
-                
-                first_doc_meta = collected_docs[0].get("metadata", {})
-                is_student_data = "student_id" in first_doc_meta
-
-                # CRITICAL FIX: Only group students if the user *asked for a list of people* (find_people).
-                # Do NOT group if the user asked for an analysis (get_student_grades).
-                if is_student_data and primary_tool_name == "find_people":
-                    self.debug(f"-> Student result set ({len(collected_docs)} docs) detected for 'find_people'. Restructuring into groups.")
-                    grouped_students = defaultdict(list)
-                    for doc in collected_docs:
-                        meta = doc.get("metadata", {})
-                        group_key = f"{meta.get('course', 'N/A')} - Year {meta.get('year', 'N/A')} - Section {meta.get('section', 'N/A')}"
-                        grouped_students[group_key].append(doc)
-                    grouped_data = [{"source_collection": "grouped_students", "group_name": name, "students": docs} for name, docs in sorted(grouped_students.items())]
-                    collected_docs = grouped_data
-                elif is_student_data:
-                    self.debug(f"-> Skipping student grouping. Primary tool was '{primary_tool_name}', not 'find_people'.")
-
-            # --- END OF REPLACEMENT ---
-
-            self.debug("\n" + "="*50)
-            self.debug(f"📑 Final {len(collected_docs)} documents being sent to Synthesizer:")
             try:
-                debug_output = json.dumps(collected_docs, indent=2)
-                print(debug_output)
-            except Exception as e:
-                print(f"Could not print debug output: {e}")
-            self.debug("="*50 + "\n")
+                max_retries = 5
+                planner_start_time = time.time()
 
-            if outcome in ["SUCCESS_DIRECT", "SUCCESS_FALLBACK"]:
-                results_count = len(collected_docs)
-                self.debug(f"Cleaning {results_count} docs for Synthesizer...")
-                cleaned_docs_for_synth = self._clean_documents_for_synthesizer(collected_docs)
-                final_context = {
-                    "status": "success",
-                    "summary": f"Found {results_count} relevant document(s).",
-                    "data": cleaned_docs_for_synth[:30] # Limit context size
-                }
-            else:
-                final_context = {"status": "empty", "summary": "I tried a precise search and a broad search, but could not find any relevant documents."}
+                coref_params = self._coref_to_params(query, session)
+                if coref_params:
+                    self.debug(f"Injecting coreference params into query: {coref_params}")
+                    query = f"{query}\n\n[System Hint: The pronoun in the query (he/she/his/her) refers to: {coref_params.get('person_name')}]"
+                
+                filters_cleared_on_retry = False
 
-        except Exception as e:
-            if planner_duration == 0.0 and 'planner_start_time' in locals():
+                for attempt in range(max_retries):
+                    self.debug(f"Planner Attempt {attempt + 1}/{max_retries}...")
+                    
+                    if filters_cleared_on_retry:
+                        self.debug("!!! 422 Recovery: Retrying with a minimal prompt (no context, no examples).")
+                        planner_context = {"current_topic": "None.", "active_filters": {}}
+                        structured_context_str = json.dumps(planner_context, indent=2)
+                        dynamic_examples = ""
+                        sys_prompt_template = PROMPT_TEMPLATES["planner_agent"]
+                        history_for_llm = []
+                    else:
+                        self.debug("-> Using 'Full Planner Prompt' with context.")
+                        dynamic_examples = self._load_dynamic_examples(query)
+                        
+                        full_context = session.get("structured_context", {})
+                        planner_context = {
+                            "current_topic": full_context.get("current_topic"),
+                            "active_filters": {}
+                        }
+                        query_lower = query.strip().lower()
+                        new_topic_starters = ["who is", "what is", "what are", "show me", "list", "find", "get", "compare"]
+                        is_new_topic = any(query_lower.startswith(starter) for starter in new_topic_starters)
+                        
+                        if not is_new_topic:
+                            self.debug("Query seems like a follow-up. Passing active filters.")
+                            planner_context["active_filters"] = full_context.get("active_filters", {})
+                        else:
+                            self.debug("Query seems like a new topic. Wiping active filters for Planner.")
+                        
+                        structured_context_str = json.dumps(planner_context, indent=2)
+                        self.debug(f"Sending pruned context to Planner: {structured_context_str}")
+                        sys_prompt_template = PROMPT_TEMPLATES["planner_agent"]
+                        history_for_llm = chat_history
+                    
+                    prompt_safe_positions = list(self.all_positions) + ["Faculty", "Staff", "Admin"]
+                    sys_prompt = sys_prompt_template.format(
+                        all_programs_list=self.all_programs, all_departments_list=self.all_departments,
+                        all_positions_list=sorted(list(set(prompt_safe_positions))),
+                        all_doc_types_list=self.all_doc_types, all_statuses_list=self.all_statuses,
+                        dynamic_examples=dynamic_examples,
+                        structured_context_str=structured_context_str
+                    )
+                    planner_user_prompt = query
+
+                    plan_raw = self.planner_llm.execute(
+                        system_prompt=sys_prompt, user_prompt=planner_user_prompt,
+                        json_mode=True, phase="planner",
+                        history=history_for_llm
+                    )
+            
+                    plan_json = self._repair_json(plan_raw)
+                    
+                    is_valid_plan, validation_error = self._validate_plan(plan_json)
+
+                    if is_valid_plan:
+                        self.debug(f"Valid multi-step plan received on attempt {attempt + 1}.")
+                        break
+                    
+                    self.debug(f"Plan validation failed: {validation_error}")
+                    plan_json = None
+                    
+                    if "422" in plan_raw:
+                        self.debug("!!! 422 Error detected. The API rejected the context.")
+                        if not filters_cleared_on_retry:
+                            self.debug("   -> Will retry ONCE with all active_filters cleared.")
+                            filters_cleared_on_retry = True
+                        else:
+                            self.debug("   -> Already retried with cleared filters. Failing permanently.")
+                            break
+                    else:
+                        self.debug(f"Attempt {attempt + 1} failed (Not a 422). Retrying...")
+                    time.sleep(1)
+                
                 planner_duration = time.time() - planner_start_time
-            if retrieval_duration == 0.0 and 'retrieval_start_time' in locals():
+                
+                if not plan_json:
+                    outcome = "FAIL_PLANNER"
+                    raise ValueError(f"AI failed to select a valid plan after {max_retries} attempts. Last error: {plan_raw}")
+
+                # --- Multi-Step Execution Loop ---
+                retrieval_start_time = time.time()
+                step_results = {}
+                collected_docs = []
+                plan_steps = plan_json.get("plan", [])
+
+                for i, step in enumerate(plan_steps):
+                    step_num = i + 1
+                    tool_call = step.get("tool_call", {})
+                    tool_name = tool_call.get("tool_name")
+                    params = tool_call.get("parameters", {})
+                    
+                    if not tool_name:
+                        self.debug(f"Step {step_num} is missing a tool_name. Stopping plan.")
+                        break
+                    
+                    try:
+                        resolved_params = self._resolve_placeholders(params, step_results)
+                        params_str = json.dumps(resolved_params)
+                        if '$' in params_str:
+                            unresolved = [v for v in re.findall(r'"(\$.*?)"', params_str)]
+                            if unresolved:
+                                raise ValueError(f"Plan failed at step {step_num}: Required value {unresolved[0]} was not found.")
+                        self.debug(f"   -> Executing Step {step_num}: {tool_name} with params: {resolved_params}")
+                    
+                    except Exception as e:
+                        self.debug(f"Error during placeholder resolution or execution for step {step_num}: {e}")
+                        raise
+                    
+                    if tool_name == "finish_plan":
+                        self.debug("Plan execution complete.")
+                        break
+                    
+                    if tool_name in self.available_tools:
+                        tool_function = self.available_tools[tool_name]
+                        sig = inspect.signature(tool_function)
+                        valid_params = {k: v for k, v in resolved_params.items() if k in sig.parameters}
+                        dropped = [k for k in resolved_params if k not in sig.parameters]
+                        if dropped:
+                            self.debug(f"Dropping unexpected parameters for {tool_name}: {dropped}")
+                        
+                        step_output = tool_function(**valid_params)
+                        step_output_list = step_output if isinstance(step_output, list) else [step_output]
+                        step_results[step_num] = step_output_list
+                        collected_docs.extend(step_output_list)
+                    else:
+                        raise ValueError(f"Plan step {step_num} uses an unknown tool: '{tool_name}'")
+                
                 retrieval_duration = time.time() - retrieval_start_time
-            import traceback
-            self.debug(f"An unexpected error occurred: {e}")
-            self.debug(f"Error Type: {type(e)}")
-            self.debug(f"Traceback: {traceback.format_exc()}")
-            error_msg = str(e)
-            if outcome == "FAIL_UNKNOWN":
-                outcome = "FAIL_EXECUTION"
-            final_context = {"status": "error", "summary": f"I ran into a technical problem: {e}"}
+                collected_docs = [doc for doc in collected_docs if doc.get("source_collection") not in ("system_signal", "system_note")]
+                
+                has_errors = any("error" in doc.get("status", "") for doc in collected_docs)
+                is_empty = (not collected_docs or all("empty" in doc.get("status", "") for doc in collected_docs)) and not has_errors
 
-        # --- Synthesizer Block ---
-        self.debug("Synthesizing final answer...")
-        synth_start_time = time.time()
-        context_for_llm = json.dumps(final_context, indent=2, ensure_ascii=False)
-        synth_prompt = PROMPT_TEMPLATES["final_synthesizer"].format(context=context_for_llm, query=query)
-        
-        final_answer = self.synth_llm.execute(
-            system_prompt="You are a careful AI analyst who provides conversational answers based only on the provided facts.",
-            user_prompt=synth_prompt, 
-            history=chat_history if not filters_cleared_on_retry else [],
-            phase="synth"
-        )
-        synth_duration = time.time() - synth_start_time
+                if has_errors:
+                    execution_mode = "primary"
+                    self.debug(f"Primary plan failed with an error. Reporting as FAIL_EXECUTION.")
+                    outcome = "FAIL_EXECUTION"
+                
+                elif is_empty:
+                    self.debug("Primary plan executed successfully but found no results. (FAIL_EMPTY)")
+                    outcome = "FAIL_EMPTY"
+                
+                else:
+                    outcome = "SUCCESS_DIRECT"
 
-        # --- Post-Synthesis Block ---
-        corruption_details = sorted(list(self.corruption_warnings)) if self.corruption_warnings else None
-        final_plan_hash = None 
+                if collected_docs:
+                    self.debug(f"Original unfiltered doc count: {len(collected_docs)}. Starting de-duplication...")
+                    unique_docs = {}
+                    for doc in collected_docs:
+                        try: content_key = json.dumps(doc.get('content'), sort_keys=True)
+                        except TypeError: content_key = str(doc.get('content')) 
+                        if content_key and content_key not in unique_docs:
+                            unique_docs[content_key] = doc
+                    collected_docs = list(unique_docs.values())
+                    self.debug(f"Found {len(collected_docs)} unique documents after de-duplication.")
 
-        try:
-            failure_keywords = ["i'm sorry", "unfortunately", "i couldn't find", "i am unable", "not available", "technical problem"]
-            is_successful_answer = not any(keyword in final_answer.lower() for keyword in failure_keywords)
-            if outcome.startswith("SUCCESS") and is_successful_answer and plan_json:
-                self.debug("Saving example to memory: SUCCESS and final answer looks good.")
-                final_plan_hash = self._save_dynamic_example(query, plan_json, session, outcome)
-            elif outcome.startswith("SUCCESS"):
-                self.debug("Skipping example save: Final answer looked like a soft failure.")
-        except Exception as e:
-            self.debug(f"Post-synthesis evaluation or example saving failed: {e}")
+                if len(collected_docs) > 5:
+                    primary_tool_name = ""
+                    if plan_json and plan_json.get("plan"):
+                        primary_tool_name = plan_json.get("plan", [{}])[0].get("tool_call", {}).get("tool_name", "")
+                    
+                    first_doc_meta = collected_docs[0].get("metadata", {})
+                    is_student_data = "student_id" in first_doc_meta
 
-        # --- Logging Block ---
-        execution_time = time.time() - start_time
-        self.training_system.record_query_result(
-            query=query, plan=plan_json, results_count=results_count,
-            execution_time=execution_time, error_msg=error_msg,
-            execution_mode=execution_mode, outcome=outcome, analyst_mode=self.execution_mode,
-            final_answer=final_answer, corruption_details=corruption_details,
-            timestamp=start_datetime, session_id=session.get('session_id'),
-            planner_duration=planner_duration, retrieval_duration=retrieval_duration,
-            synth_duration=synth_duration, planner_model=self.planner_llm.planner_model,
-            synth_model=self.synth_llm.synth_model, plan_hash=final_plan_hash
-        )
-        
-        return final_answer, plan_json, collected_docs
+                    if is_student_data and primary_tool_name == "find_people":
+                        self.debug(f"-> Student result set ({len(collected_docs)} docs) detected for 'find_people'. Restructuring into groups.")
+                        grouped_students = defaultdict(list)
+                        for doc in collected_docs:
+                            meta = doc.get("metadata", {})
+                            group_key = f"{meta.get('course', 'N/A')} - Year {meta.get('year', 'N/A')} - Section {meta.get('section', 'N/A')}"
+                            grouped_students[group_key].append(doc)
+                        grouped_data = [{"source_collection": "grouped_students", "group_name": name, "students": docs} for name, docs in sorted(grouped_students.items())]
+                        collected_docs = grouped_data
+                    elif is_student_data:
+                        self.debug(f"-> Skipping student grouping. Primary tool was '{primary_tool_name}', not 'find_people'.")
+
+                self.debug("\n" + "="*50)
+                self.debug(f"📑 Final {len(collected_docs)} documents being sent to Synthesizer:")
+                try:
+                    debug_output = json.dumps(collected_docs, indent=2)
+                    print(debug_output)
+                except Exception as e:
+                    print(f"Could not print debug output: {e}")
+                self.debug("="*50 + "\n")
+
+                if outcome in ["SUCCESS_DIRECT", "SUCCESS_FALLBACK"]:
+                    results_count = len(collected_docs)
+                    self.debug(f"Cleaning {results_count} docs for Synthesizer...")
+                    cleaned_docs_for_synth = self._clean_documents_for_synthesizer(collected_docs)
+                    final_context = {
+                        "status": "success",
+                        "summary": f"Found {results_count} relevant document(s).",
+                        "data": cleaned_docs_for_synth[:30]
+                    }
+                else:
+                    final_context = {"status": "empty", "summary": "I tried a precise search and a broad search, but could not find any relevant documents."}
+
+            except Exception as e:
+                if planner_duration == 0.0 and 'planner_start_time' in locals():
+                    planner_duration = time.time() - planner_start_time
+                if retrieval_duration == 0.0 and 'retrieval_start_time' in locals():
+                    retrieval_duration = time.time() - retrieval_start_time
+                import traceback
+                self.debug(f"An unexpected error occurred: {e}")
+                self.debug(f"Error Type: {type(e)}")
+                self.debug(f"Traceback: {traceback.format_exc()}")
+                error_msg = str(e)
+                if outcome == "FAIL_UNKNOWN":
+                    outcome = "FAIL_EXECUTION"
+                final_context = {"status": "error", "summary": f"I ran into a technical problem: {e}"}
+
+            # --- Synthesizer Block (Using ONLINE prompt) ---
+            self.debug("Synthesizing final answer...")
+            synth_start_time = time.time()
+            context_for_llm = json.dumps(final_context, indent=2, ensure_ascii=False)
+            
+            # --- THIS IS THE ORIGINAL "ONLINE" PROMPT ---
+            synth_prompt = PROMPT_TEMPLATES["final_synthesizer"].format(context=context_for_llm, query=query)
+            
+            final_answer = self.synth_llm.execute(
+                system_prompt="You are a careful AI analyst who provides conversational answers based only on the provided facts.",
+                user_prompt=synth_prompt, 
+                history=chat_history if not filters_cleared_on_retry else [],
+                phase="synth"
+            )
+            # --- END OF CHANGE ---
+            
+            synth_duration = time.time() - synth_start_time
+
+            # --- Post-Synthesis Block ---
+            corruption_details = sorted(list(self.corruption_warnings)) if self.corruption_warnings else None
+            final_plan_hash = None 
+
+            try:
+                failure_keywords = ["i'm sorry", "unfortunately", "i couldn't find", "i am unable", "not available", "technical problem"]
+                is_successful_answer = not any(keyword in final_answer.lower() for keyword in failure_keywords)
+                if outcome.startswith("SUCCESS") and is_successful_answer and plan_json:
+                    self.debug("Saving example to memory: SUCCESS and final answer looks good.")
+                    final_plan_hash = self._save_dynamic_example(query, plan_json, session, outcome)
+                elif outcome.startswith("SUCCESS"):
+                    self.debug("Skipping example save: Final answer looked like a soft failure.")
+            except Exception as e:
+                self.debug(f"Post-synthesis evaluation or example saving failed: {e}")
+
+            # --- Logging Block ---
+            execution_time = time.time() - start_time
+            self.training_system.record_query_result(
+                query=query, plan=plan_json, results_count=results_count,
+                execution_time=execution_time, error_msg=error_msg,
+                execution_mode=execution_mode, outcome=outcome, analyst_mode=self.execution_mode,
+                final_answer=final_answer, corruption_details=corruption_details,
+                timestamp=start_datetime, session_id=session.get('session_id'),
+                planner_duration=planner_duration, retrieval_duration=retrieval_duration,
+                synth_duration=synth_duration, planner_model=self.planner_llm.planner_model,
+                synth_model=self.synth_llm.synth_model, plan_hash=final_plan_hash
+            )
+            
+            return final_answer, plan_json, collected_docs
+            # --- END ONLINE/SPLIT EXECUTION PATH ---
 
 
 
