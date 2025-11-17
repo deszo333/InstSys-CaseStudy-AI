@@ -20,6 +20,29 @@ def load_config(config_path: Path) -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def AIChart():
+    """
+    Initializes and runs the Admin Analyst.
+    """
+    config_path = Path("config/config.json")
+
+    try:
+        config = load_config(config_path)
+    except FileNotFoundError:
+        return
+
+    print("\n🚀 Starting AI Admin Analyst...")
+
+    # Create the AdminAnalyst instance
+    admin_ai = AdminAnalyst(llm_config=config)
+
+    # --- ADDED THIS LINE AS REQUESTED ---
+    # This will print a sample doc to prove which DB it's connected to
+    admin_ai.print_log_sample()
+    # --- END OF ADDED LINE ---
+
+    admin_ai.start_admin_analyst()
+
 def main():
     """
     Initializes and runs the Admin Analyst.

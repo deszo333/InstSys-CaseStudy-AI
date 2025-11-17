@@ -64,25 +64,7 @@ function Dashboard({ goChat, goAccounts, goLogin }) {
         setTimeout(checkServer, 200);
       }
     };
-
-    // =================================
-    // Initialize AI configuration
-    // =================================
-
-    const InitAI = async () => {
-      try {
-        const res = await fetch(`${EXPRESS_API}/initialize/AI`);
-        if (res.ok) {
-          setLoading(false);
-        } else {
-          setTimeout(InitAI, 200);
-        }
-      } catch {
-        setTimeout(InitAI, 200);
-      }
-    }
-
-    InitAI();
+    
     checkServer();
   }, [location.pathname, guest]);
 

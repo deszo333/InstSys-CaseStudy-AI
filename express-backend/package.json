@@ -42,9 +42,10 @@
     "requests": "^0.3.0",
     "saslprep": "^1.0.3",
     "simple-update-notifier": "^2.0.0",
+    "uuid": "^13.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.1.11"
   }
 }

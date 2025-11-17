@@ -16,7 +16,7 @@ import coursesRoute from "./routes/coursesRoute.js";
 import fileRoute from "./routes/fileRoute.js";
 import twoFactorVerificationRoute from "./routes/twoFactorVerificationRoute.js";
 import { connection, upload } from "./src/modules/modules.connection.js";
-import { callPythonAPI, configPythonAPI } from "./API/PythonAPI.js";
+import { callPythonAPI, configPythonAPI, requestmode } from "./API/PythonAPI.js";
 import Filemeta from "./src/utils/cons.js";
 
 console.log("✅ registerRoute.js env check:", {
@@ -32,6 +32,7 @@ console.log("server is starting...");
 
 const PORT = process.env.PORT || 5000;
 const allowedOrigins = ["http://localhost:5173", "http://localhost:5174"];
+configPythonAPI();
 
 // ✅ Enable CORS
 app.use(
@@ -69,16 +70,7 @@ app.get("/health", (req, res) => {
   console.log("Health check endpoint was called.");
 });
 
-// ✅ Initialize AI
-app.get("/initialize/AI", (req, res) => {
-  try {
-    configPythonAPI();
-  } catch (err) {
-    console.error("AI initialization failed:", err);
-  }
-});
-
-// ✅ Attach routes
+app.use(express.json({ limit: "10mb" }));
 app.use("/", loginRoute);
 app.use("/student", fetchStudentRoute);
 app.use("/", refreshCollections);
@@ -86,6 +78,7 @@ app.use("/", registerRoute);
 app.use("/", coursesRoute);
 app.use("/", fileRoute);
 app.use("/", twoFactorVerificationRoute); // <-- Add this line
+app.use("v1/request/mode", requestmode); // 
 
 // ✅ File upload endpoint
 app.post("/v1/upload/file", memoryUpload.single("file"), async (req, res) => {
@@ -132,6 +125,25 @@ app.post("/v1/upload/file", memoryUpload.single("file"), async (req, res) => {
   }
 });
 
+app.post("/v1/chat/toggle", async (req, res) => {
+
+});
+
+app.post("/v1/chat/prompt", async (req, res) => {
+  try {
+    const { query } = req.body;
+    console.log("Received request to /v1/chat/prompt with query:", query);
+
+    if (!query) {
+      return res.status(400).json({ error: "Missing query parameter" });
+    }
+    const response = await callPythonAPI(query);
+    res.json(response);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch data from Python API" });
+  }
+});
+
 // ✅ Global error handler
 app.use((err, req, res, next) => {
   console.error("Global error handler:", err);
@@ -141,17 +153,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// const transporter = nodemailer.createTransport({
+//   service: "gmail",
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS,
+//   },
+//   tls: {
+//     rejectUnauthorized: false,
+//   }
+// });
 
-transporter.verify()
-  .then(() => console.log("✅ Gmail ready!"))
-  .catch(err => console.error("❌ Gmail failed:", err));
+// transporter.verify()
+//   .then(() => console.log("✅ Gmail ready!"))
+//   .catch(err => console.error("❌ Gmail failed:", err));
 
 // ✅ Start server
 app.listen(PORT, () => {

@@ -1,9 +1,13 @@
 import uvicorn #type: ignore
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware #type: ignore
 from fastapi import FastAPI, Request, HTTPException#type: ignore
 from fastapi.responses import JSONResponse #type: ignore
-from src.config import Configuration
-from utils.run_ai import endpoint_connection
+from utils.run_ai import list_all_collections
+from utils.mongo_image_mapper import build_image_map_from_mongo
+from utils.run_ai import load_config
+from utils.ai_core.analyst import AIAnalyst
+from utils.rbac_guard import apply_rbac_to_collections, resolve_allowed_collections, load_last_role_assign
 
 app = FastAPI()
 app.add_middleware(
@@ -14,24 +18,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ----------------------Route---------------------- 
+# ----------------------Route----------------------
 
-ai_analyst = None
+base_root = Path(__file__).resolve().parents[1]
+config_path = Path("config/config.json")
+config = load_config(config_path)
+
+ai_analyst = AIAnalyst(collections= [], llm_config=config)
+requestChart = False
+requestImage = False
 
 
-@app.post("/v1/chat/prompt/status")
-async def status():
-    global ai_analyst
-    ai_analyst = endpoint_connection()
-    print(f"AI analyst: Initialized successfully")
+@app.post("/v1/chat/prompt/requestmode")
+async def request_mode(mode: bool):
+    global requestChart, requestImage
+    
+    requestChart, requestImage = mode["ReqChart"], mode["ReqImage"]
+
+@app.post("/v1/chat/prompt/collection")
+async def Login_collection(request: Request):
+    global ai_analyst, ai_chart
+    
+    data = await request.json()
+    role = data.get("role")
+    assign = data.get("assign")
+    
+    collection = list_all_collections(config= config, role= role, assign = assign)
+    if role or assign:
+        py_backend_dir = base_root / "python-backend"
+        current_role, current_assign = load_last_role_assign(py_backend_dir)
+        role = role or current_role
+        assign = assign if assign else current_assign
+        allowed = resolve_allowed_collections(collection, role, assign)
+        
+    else:
+        allowed, dbg = apply_rbac_to_collections(collection, base_root)
+    ai_analyst = AIAnalyst(collections= allowed, llm_config=config)
+    
 
 @app.post("/v1/chat/prompt/mode/{mode}")
 async def change_mode(mode: str):
-    global ai_analyst, settings
+    global ai_analyst
     
     valid_modes = ["online", "offline"]
     if mode not in valid_modes:
-        raise HTTPException(status_code=400, detail="Invalide Execution mode.")
+        raise HTTPException(status_code=400, detail="Invalid Execution mode.")
     
     if ai_analyst is None:
         raise HTTPException(status_code=400, detail="AI Analyst not initialized.")
@@ -39,7 +70,6 @@ async def change_mode(mode: str):
     ai_analyst.executiona_mode = mode
     print(f" Execution mode set to: {mode}")
     
-
 @app.post("/v1/chat/prompt/response")
 async def ChatPrompt(request: Request):
     global ai_analyst
@@ -50,10 +80,9 @@ async def ChatPrompt(request: Request):
     if not data or 'query' not in data:
         raise HTTPException(status_code=400, detail="Missing query")
     
-    user_query = data['query']
-    final_answer = ai_analyst.web_start_ai_analyst(user_query=user_query)
+    user_query, session_id = data['query'], data['session_id']
+    final_answer = ai_analyst.web_start_ai_analyst(user_query=user_query, session_id= session_id)
     return JSONResponse({"response": final_answer}, status_code=201)
-
 
 # ----------------------Route----------------------
 

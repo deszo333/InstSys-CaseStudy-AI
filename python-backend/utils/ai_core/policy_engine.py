@@ -22,10 +22,10 @@ class PolicyEngine:
             self.nlp = spacy.load("en_core_web_sm")
             # --- THIS IS THE NEW LINE ---
             self.stopwords = self.nlp.Defaults.stop_words
-            print("✅ SpaCy NLP model ('en_core_web_sm') and stopwords loaded successfully for PolicyEngine.")
+            print(" SpaCy NLP model ('en_core_web_sm') and stopwords loaded successfully for PolicyEngine.")
             self.debug = print
         except OSError:
-            print("❌ SpaCy model not found. Please run: python -m spacy download en_core_web_sm")
+            print(" SpaCy model not found. Please run: python -m spacy download en_core_web_sm")
             self.nlp = None
             # --- THIS IS THE NEW LINE (FALLBACK) ---
             self.stopwords = set() # Use an empty set as a fallback

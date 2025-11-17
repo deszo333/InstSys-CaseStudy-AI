@@ -7,8 +7,13 @@
     "start:all": "concurrently \"cd frontend && npm run dev\" \"cd express-backend && npm run server\" \"cd python-backend && uvicorn entrypoint:app --port 5001 --reload\""
   },
   "dependencies": {
+    "cron": "^4.3.3",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
     "framer-motion": "^12.23.24",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.1",
+    "node-cron": "^4.2.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "vosk-browser": "^0.0.8"
@@ -16,6 +21,7 @@
   "devDependencies": {
     "@types/react": "^19.1.11",
     "@types/react-dom": "^19.1.7",
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "nodemon": "^3.1.11"
   }
 }

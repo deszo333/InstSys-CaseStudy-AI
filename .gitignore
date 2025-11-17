@@ -60,3 +60,8 @@ desktop.ini
 # Export or generated text files (optional)
 database_export.txt
 folder_structure.txt
+node_modules
+package-lock.json
+package.json
+express-backend/package-lock.json
+express-backend/src/config/last_role_assign.json

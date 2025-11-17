@@ -48,10 +48,9 @@ class AdminAnalyst:
             self.mongo_db = self.mongo_client[mongo_db_name]
             # Connect to the query_log collection
             self.log_collection = self.mongo_db["query_log"]
-            print(f"✅ AdminAnalyst connected to MongoDB: '{mongo_connection_string}'")
-            print(f"✅ Using database: '{mongo_db_name}', Collection: 'query_log'")
+            print(f"[OK] AdminAnalyst connected to MongoDB: '{mongo_connection_string}'")
         except Exception as e:
-            print(f"❌ AdminAnalyst failed to connect to MongoDB: {e}")
+            print(f"[ERROR] AdminAnalyst failed to connect to MongoDB: {e}")
             raise
         # --- END OF CONNECTION LOGIC ---
 
@@ -110,7 +109,7 @@ class AdminAnalyst:
             return None
 
     # --- NEW METHOD TO GENERATE THE CHART ---
-    def _generate_chart_image(self, chart_data: list, query: str, filename: str):
+    def _generate_chart_image(self, chart_data: list, query: Optional[str] , filename: str):
         """
         Generates and saves a horizontal bar chart from the chart_data.
         """
@@ -150,7 +149,7 @@ class AdminAnalyst:
                 ax.text(v + (max(values) * 0.01), i, str(v), va='center', color='grey')
 
             ax.set_xlabel("Query Count")
-            ax.set_title(f'Analysis for: "{query}"', loc='left', fontsize=14)
+            # ax.set_title(f'Analysis for: "{query}"', loc='left', fontsize=14)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
             plt.tight_layout()
