@@ -59,7 +59,7 @@ export default function ChatModel() {
     const finalMsg = msg ?? input;
     if (!finalMsg.trim()) return;
 
-    const userMsg = { sender: "user", text  : finalMsg, timestamp: time };
+    const userMsg = { sender: "user", text: finalMsg, timestamp: time };
     addMessage(userMsg);
 
     const msgToSend = finalMsg;
@@ -134,14 +134,16 @@ export default function ChatModel() {
   useEffect(() => {
     const speakResponse = async () => {
       if (!speak) return;
+
       const result = await puterSpeak(speak, { voice: "Lupe" });
       if (result) setVisualizerStream(result);
+
       setSpeak("");
     };
-    if (holoOn) {
+
+    // Speak if hologram is ON or mic is ON
+    if (holoOn || micON) {
       speakResponse();
-    } else {
-      return;
     }
   }, [speak]);
 

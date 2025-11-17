@@ -10,6 +10,7 @@ export default function VoiceInput({ voiceSubmit, micON, toggleMic, mode }) {
   const gainNodeRef = useRef(null);
   const analyserRef = useRef(null);
   const dataArrayRef = useRef(null);
+  const animationRef = useRef(null);
 
   const recognitionRef = useRef(null);
 
@@ -49,6 +50,7 @@ export default function VoiceInput({ voiceSubmit, micON, toggleMic, mode }) {
    */
 
   useEffect(() => {
+    console.log("MODE", mode);
     console.log("micON changed:", micON);
 
     const startListening = async () => {
@@ -146,7 +148,9 @@ export default function VoiceInput({ voiceSubmit, micON, toggleMic, mode }) {
         const detectVoice = () => {
           analyser.getByteFrequencyData(dataArray);
           const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-          requestAnimationFrame(detectVoice); //This would be on loop para constanly ni chcheck niya yung media data
+          console.log("NOISE LEVEL:", avg);
+
+          animationRef.current = requestAnimationFrame(detectVoice); //This would be on loop para constanly ni chcheck niya yung media data
         };
 
         // Start the whole function on loop
@@ -157,7 +161,7 @@ export default function VoiceInput({ voiceSubmit, micON, toggleMic, mode }) {
       }
     };
 
-    const stopListening = () => {
+    const stopListening = async () => {
       try {
         // 1. Stop all tracks in the MediaStream
         if (micStreamRef.current) {
@@ -182,8 +186,8 @@ export default function VoiceInput({ voiceSubmit, micON, toggleMic, mode }) {
           audioContextRef.current &&
           audioContextRef.current.state !== "closed"
         ) {
-          audioContextRef.current.close();
-          console.log("micON changed:", micON);
+          await audioContextRef.current.suspend().catch(() => {});
+          await audioContextRef.current.close().catch(() => {});
         } else {
           console.log("AudioContext already closed — skipping");
         }
@@ -191,8 +195,14 @@ export default function VoiceInput({ voiceSubmit, micON, toggleMic, mode }) {
           recognitionRef.current.stop();
           recognitionRef.current.onresult = null;
           recognitionRef.current.onerror = null;
+          recognitionRef.current.onend = null;
           recognitionRef.current = null;
           console.log("Speech recognition stopped.");
+        }
+
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+          animationRef.current = null;
         }
 
         // Optional: Reset transcript state if desired
@@ -211,20 +221,20 @@ export default function VoiceInput({ voiceSubmit, micON, toggleMic, mode }) {
 
     // Cleanup when component unmounts
     return stopListening;
-  }, [!micON]);
+  }, [micON]);
 
   return micON ? (
-    <div className="mx-2 rounded-sm flex flex-col h-[3vw] w-[80%] border border-black/20 gap-1 p-1">
+    <div className="mx-2 rounded-sm flex flex-col h-[3vw] w-[80%] border border-black/20 gap-1 leading-tight p-1">
       <div
         className={`${
           !mode
             ? "w-full px-4 text-sm text-gray-600"
-            : "text-white text-2xl font-light"
+            : "text-black text-sm font-light"
         }`}
       >
         Listening...
       </div>
-      <div className={`${!mode ? "w-full px-4" : "text-lg text-white"}`}>
+      <div className={`${!mode ? "w-full px-4" : "text-lg text-black"}`}>
         {transcript}
       </div>
     </div>
