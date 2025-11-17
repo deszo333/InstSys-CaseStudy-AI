@@ -42,6 +42,9 @@ router.post("/refresh_collections", async (req, res) => {
     assign = ["Guest"];
   }
 
+  console.log(`Role: ${role}`);
+  console.log(`Assign: ${assign}`);
+
   try {
     await axios.post("http://localhost:5001/v1/chat/prompt/collection", {
       role: role,

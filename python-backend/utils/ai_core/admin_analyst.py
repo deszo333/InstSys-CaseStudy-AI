@@ -48,10 +48,9 @@ class AdminAnalyst:
             self.mongo_db = self.mongo_client[mongo_db_name]
             # Connect to the query_log collection
             self.log_collection = self.mongo_db["query_log"]
-            print(f"✅ AdminAnalyst connected to MongoDB: '{mongo_connection_string}'")
-            print(f"✅ Using database: '{mongo_db_name}', Collection: 'query_log'")
+            print(f"[OK] AdminAnalyst connected to MongoDB: '{mongo_connection_string}'")
         except Exception as e:
-            print(f"❌ AdminAnalyst failed to connect to MongoDB: {e}")
+            print(f"[ERROR] AdminAnalyst failed to connect to MongoDB: {e}")
             raise
         # --- END OF CONNECTION LOGIC ---
 

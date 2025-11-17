@@ -1,8 +1,10 @@
 # backend/utils/run_ai.py
 import sys
 import json
+import argparse
 from pathlib import Path
 import os
+from utils.ai_core.analyst import AIAnalyst
 from utils.ai_core.admin_analyst import AdminAnalyst
 
 # --- Exception placeholder you can expand later --------------------------------
@@ -20,8 +22,9 @@ os.chdir(Path(__file__).resolve().parents[1])
 
 # Add the current directory to the system path to allow importing AI.py
 sys.path.append(str(Path(__file__).resolve().parent))
-
-from ai_core.analyst import AIAnalyst
+# Also add python-backend to sys.path so "utils" package can be resolved
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from utils.rbac_guard import apply_rbac_to_collections, resolve_allowed_collections, load_last_role_assign
 
 
 def load_config(config_path: Path) -> dict:
@@ -131,6 +134,12 @@ def main():
     """
     Initializes and runs the AI Analyst.
     """
+    # CLI overrides for RBAC
+    parser = argparse.ArgumentParser(description="Run AI Analyst with optional RBAC overrides")
+    parser.add_argument("--role", dest="role", help="Override RBAC role (e.g., Admin, Guest, Teaching_Faculty, student)")
+    parser.add_argument("-a", "--assign", dest="assigns", action="append", help="Override RBAC assign(s); use multiple -a for more (e.g., -a BSIT -a BSCS)")
+    args, _ = parser.parse_known_args()
+
     config_path = Path("config/config.json")  # Use a relative path from the new working directory
 
     # 1) Load configuration
@@ -144,12 +153,36 @@ def main():
     execution_mode = config.get("execution_mode", "split")
 
     # 3) Discover all collections dynamically (with fallbacks)
+    base_root = Path(__file__).resolve().parents[1]  # project root
     collections = list_all_collections(config)
-    print("\n🗂️  MongoDB collections to be used:", collections)
+    print("\n🗂️  Discovered collections:", collections)
+
+    # Apply RBAC filtering based on last_role_assign.json or CLI overrides
+    if args.role or args.assigns:
+        py_backend_dir = base_root / "python-backend"
+        current_role, current_assign = load_last_role_assign(py_backend_dir)
+        role = args.role or current_role
+        assign = args.assigns if args.assigns else current_assign
+        allowed = resolve_allowed_collections(collections, role, assign)
+        dbg = {"role": role, "assign": assign}
+    else:
+        allowed, dbg = apply_rbac_to_collections(collections, base_root)
+
+    print(f"👤 RBAC role: {dbg['role']}, assign: {dbg['assign']}")
+    if not allowed:
+        print("⚠️ RBAC produced no collections; the AI Analyst will use an empty set. Adjust role/assign or rules if needed.")
+    collections = allowed
+    print("✅ Collections after RBAC:", collections)
 
     print("\n🚀 Starting AI Analyst (now using MongoDB)...")
 
-    # 4) Create the AIAnalyst instance, providing all required arguments
+    # 4) Create the AI Analyst instance, providing all required arguments (lazy import to avoid hard dependency during RBAC-only checks)
+    try:
+        from ai_core import AIAnalyst  # type: ignore
+    except Exception as e:
+        print(f"ℹ️ Skipping AIAnalyst run due to import error: {e}")
+        return 0
+
     ai = AIAnalyst(collections=collections, llm_config=config, execution_mode=execution_mode)
 
     # 5) Start the AI's interactive loop
