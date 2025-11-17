@@ -125,6 +125,10 @@ app.post("/v1/upload/file", memoryUpload.single("file"), async (req, res) => {
   }
 });
 
+app.post("/v1/chat/toggle", async (req, res) => {
+
+});
+
 app.post("/v1/chat/prompt", async (req, res) => {
   try {
     const { query } = req.body;
@@ -149,17 +153,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// const transporter = nodemailer.createTransport({
+//   service: "gmail",
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS,
+//   },
+//   tls: {
+//     rejectUnauthorized: false,
+//   }
+// });
 
-transporter.verify()
-  .then(() => console.log("✅ Gmail ready!"))
-  .catch(err => console.error("❌ Gmail failed:", err));
+// transporter.verify()
+//   .then(() => console.log("✅ Gmail ready!"))
+//   .catch(err => console.error("❌ Gmail failed:", err));
 
 // ✅ Start server
 app.listen(PORT, () => {

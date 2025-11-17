@@ -2,7 +2,7 @@ import uvicorn #type: ignore
 from fastapi.middleware.cors import CORSMiddleware #type: ignore
 from fastapi import FastAPI, Request, HTTPException#type: ignore
 from fastapi.responses import JSONResponse #type: ignore
-from utils.run_ai import endpoint_connection
+from utils.run_ai import endpoint_connection, list_all_collections
 from utils.mongo_image_mapper import build_image_map_from_mongo
 
 app = FastAPI()
@@ -14,7 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ----------------------Route---------------------- 
+# ----------------------Route----------------------
 
 ai_analyst, ai_chart = endpoint_connection()
 requestChart = False
@@ -25,6 +25,19 @@ async def request_mode(mode: bool):
     global requestChart, requestImage
     
     requestChart, requestImage = mode["ReqChart"], mode["ReqImage"]
+
+@app.post("/v1/chat/prompt/collection")
+async def Login_collection(request: Request):
+    global ai_analyst, ai_chart
+    
+    data = await request.json()
+    role = data.get("role")
+    assign = data.get("assign")
+    
+    
+    collection = list_all_collections(role= role, assign = assign)
+    ai_analyst, ai_chart = endpoint_connection(collection)
+    
 
 @app.post("/v1/chat/prompt/mode/{mode}")
 async def change_mode(mode: str):

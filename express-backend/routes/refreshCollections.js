@@ -2,6 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import axios from "axios";
 
 const router = express.Router();
 console.log("🔹 refresh collections route initialized");
@@ -19,12 +20,10 @@ const ROLE_ASSIGN_FILE = path.join(
 
 // Global-like variables (you can store these elsewhere if needed)
 let collections = {};
-let ai = null;
-let role = "Admin";
-let assign = ["BSCS"];
 
-router.post("/refresh_collections", (req, res) => {
+router.post("/refresh_collections", async (req, res) => {
   collections = {}; // clear previous collections
+  let role, assign
 
   try {
     const data = fs.readFileSync(ROLE_ASSIGN_FILE, "utf-8");
@@ -41,6 +40,16 @@ router.post("/refresh_collections", (req, res) => {
   // If last login was guest, set role and assign to Guest
   if (role === "Guest") {
     assign = ["Guest"];
+  }
+
+  try {
+    await axios.post("http://localhost:5001/v1/chat/prompt/collection", {
+      role: role,
+      assign: assign
+    });
+    console.log("✅ Role and assign sent to Python backend");
+  } catch (error) {
+    console.error("❌ Failed to send role and assign to Python backend:", error.message);
   }
 
   res.status(200).json({
