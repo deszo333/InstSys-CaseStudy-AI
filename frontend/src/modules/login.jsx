@@ -41,8 +41,14 @@ function Login({ goRegister }) {
   // =================================
   useEffect(() => {
     fetch(`${EXPRESS_API}/health`)
-      .then((res) => res.json())
-      .then(console.log)
+      .then(async (res) => {
+        try {
+          const json = await res.json();
+          console.log(json);
+        } catch {
+          console.log("Health endpoint did not return JSON.");
+        }
+      })
       .catch(console.error);
     const checkServer = async () => {
       try {
@@ -70,14 +76,27 @@ function Login({ goRegister }) {
     }
     setError("");
     try {
+      if (!EXPRESS_API) {
+        showPopup("error", "API endpoint not configured");
+        return;
+      }
       const res = await fetch(`${EXPRESS_API}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
-      })
-        .then(console.log("Login API Running"))
-        .catch(console.error);
-      const data = await res.json();
+      });
+      console.log("Login API Running");
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        // Log the raw response text for debugging
+        const text = await res.text();
+        console.error("Non-JSON response from /login:", text);
+        showPopup("error", `Server error: ${res.status}`);
+        setError("Invalid server response");
+        return;
+      }
       if (res.ok) {
         processLoginSuccess(data);
       } else {

@@ -2,14 +2,12 @@ import { useRef, useEffect, useState } from "react";
 import * as faceapi from "face-api.js";
 import React from "react";
 
-function FaceScanner({ faceOn, onClose }) {
+function FaceScanner({ faceOn, onLoginSuccess, onClose }) {
   const videoRef = useRef();
   const canvasRef = useRef();
   const [faceMatch, setFaceMatch] = useState(true);
-
-  const [registeredDescriptor, setRegisteredDescriptor] = useState(null);
-  const registeredDescriptorRef = useRef(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [faceMatcher, setFaceMatcher] = useState(null);
 
   useEffect(() => {
     let intervalId = null;
@@ -21,8 +19,8 @@ function FaceScanner({ faceOn, onClose }) {
       navigator.mediaDevices
         .getUserMedia({
           video: {
-            width: { ideal: 1280 },  // try 640, 720, 1080, 1920, etc.
-            height: { ideal: 1280 },// ensures front camera on laptops/phones
+            width: { ideal: 1280 },
+            height: { ideal: 1280 },
           },
         })
         .then((stream) => {
@@ -31,7 +29,7 @@ function FaceScanner({ faceOn, onClose }) {
             videoRef.current.onplaying = () => {
               console.log("✅ Video feed is live");
               if (!intervalId) {
-                intervalId = setInterval(detectMyFace, 500);
+                intervalId = setInterval(detectMyFace, 600);
               }
             };
           }
@@ -71,40 +69,40 @@ function FaceScanner({ faceOn, onClose }) {
         faceapi.nets.faceRecognitionNet.loadFromUri("/models/face-api"),
         faceapi.nets.ssdMobilenetv1.loadFromUri("/models/face-api"),
       ]);
-      console.log("✅ Models loaded");
+      console.log("✅ FaceAPI models loaded");
       setModelsLoaded(true);
     };
 
     // ------------------------------
-    // Register Face
+    // Load Registered Users JSON
     // ------------------------------
-    const faceRegister = async () => {
-      const img = await faceapi.fetchImage("./models/face/49174c30-00a2-46d8-bcd9-c81f11b52053.jpg");
-      const detection = await faceapi
-        .detectSingleFace(img)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+    const loadRegisteredFaces = async () => {
+      try {
+        const res = await fetch("/models/face/users.json"); // your JSON path
+        const data = await res.json();
 
-      if (!detection) {
-        console.log("⚠️ No face found in registration image");
-        return;
+        const labeledDescriptors = Object.entries(data).map(([userId, info]) => {
+          return new faceapi.LabeledFaceDescriptors(
+            userId, // label is the user ID
+            [new Float32Array(info.faceDescriptor)]
+          );
+        });
+
+        const matcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+        setFaceMatcher(matcher);
+        console.log(`✅ Loaded ${labeledDescriptors.length} registered faces`);
+      } catch (err) {
+        console.error("❌ Failed to load registered faces:", err);
       }
-
-      setRegisteredDescriptor(detection.descriptor);
-      registeredDescriptorRef.current = detection.descriptor;
-
-      console.log("✅ Face descriptor loaded");
     };
 
     // ------------------------------
     // Face Detection Loop
     // ------------------------------
     const detectMyFace = async () => {
-      if (!videoRef.current || !canvasRef.current) return;
+      if (!videoRef.current || !canvasRef.current || !faceMatcher) return;
 
       const video = videoRef.current;
-
-      // Wait until metadata (videoWidth/Height) is available
       if (!video.videoWidth || !video.videoHeight) return;
 
       const detections = await faceapi
@@ -121,54 +119,45 @@ function FaceScanner({ faceOn, onClose }) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       faceapi.draw.drawDetections(canvas, resizedDetections);
 
-      const descriptor = registeredDescriptorRef.current;
-      if (!descriptor) {
-        console.log("⏳ Waiting for registered face descriptor...");
-        return;
-      }
-
-      const labeledDescriptor = new faceapi.LabeledFaceDescriptors(
-        "Registered User",
-        [new Float32Array(descriptor)]
-      );
-
-      const faceMatcher = new faceapi.FaceMatcher(labeledDescriptor, 0.6);
-
       resizedDetections.forEach((det) => {
         const bestMatch = faceMatcher.findBestMatch(det.descriptor);
 
-        if(bestMatch.label === "unknown") {
+        if (bestMatch.label === "unknown") {
           setFaceMatch(false);
-          console.log("Face Do Not Match");
+          console.log("❌ Face not recognized");
         } else {
           setFaceMatch(true);
-          console.log("Face Match");
+          console.log(`✅ Matched: ${bestMatch.label}`);
+          // 🔹 Trigger your login callback here
+          if (onLoginSuccess) {
+            onLoginSuccess(bestMatch.label); // send back user ID like "PDM-2023-003210"
+          }
         }
 
-        
         const box = det.detection.box;
         const drawBox = new faceapi.draw.DrawBox(box, {
           label:
-            bestMatch.label === "unknown" ? "❌ Not Match" : "✅ Face Match",
-            boxColor: bestMatch.label === "unknown" ? "red" : "green",
+            bestMatch.label === "unknown"
+              ? "❌ Not Match"
+              : `✅ ${bestMatch.label}`,
+          boxColor: bestMatch.label === "unknown" ? "red" : "green",
         });
         drawBox.draw(canvas);
       });
     };
 
     // ------------------------------
-    // Initialized
+    // Initialization
     // ------------------------------
     const init = async () => {
       console.log("Initializing Face Scanner...");
-      if (!modelsLoaded) await loadModels();
-      await faceRegister();
+      await loadModels();
+      await loadRegisteredFaces();
       startVideo();
     };
 
     if (faceOn) init();
 
-    // Cleanup when component unmounts or faceOn becomes false
     return () => {
       stopVideo();
     };
@@ -178,20 +167,22 @@ function FaceScanner({ faceOn, onClose }) {
   // UI
   // ------------------------------
   return (
-      
     <div className="flex flex-col w-full h-full">
       <div className="flex flex-col items-center justify-center w-full p-2 h-fit">
         <h1 className="text-[clamp(1rem,2vw,3rem)] font-medium">Face Detection</h1>
-        <p className="text-[clamp(0.5rem,1vw,1rem)] text-center">Scan your face to verify your identity</p>
+        <p className="text-[clamp(0.5rem,1vw,1rem)] text-center">
+          Scan your face to verify your identity
+        </p>
       </div>
-      <div className="flex w-full h-full justify-center items-center">
+      <div className="flex w-full h-full justify-center items-center relative">
         <video
           ref={videoRef}
           autoPlay
           muted
           playsInline
-        className={`w-[100%] aspect-square rounded-full object-cover border-5
-          ${faceMatch ? "border-green-600" : "border-red-600"}`}
+          className={`w-[100%] aspect-square rounded-full object-cover border-5 ${
+            faceMatch ? "border-green-600" : "border-red-600"
+          }`}
         />
         <canvas
           ref={canvasRef}

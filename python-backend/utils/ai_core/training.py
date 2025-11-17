@@ -26,7 +26,7 @@ class TrainingSystem:
         """
         self.db = mongo_db
         self.log_collection = self.db["query_log"]
-        print(f"✅ TrainingSystem initialized and connected to 'query_log'.")
+        print(f"TrainingSystem initialized and connected to 'query_log'.")
 
     
     def record_query_result(

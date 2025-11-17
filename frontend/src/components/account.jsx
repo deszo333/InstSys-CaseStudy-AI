@@ -20,21 +20,6 @@ return (
   <div className="w-full h-full flex justify-center p-6">
     <div className="w-[70%] flex flex-col gap-6">
 
-<<<<<<< Updated upstream
-  return (
-    <div className="w-full h-full gap-5 p-4 flex flex-col">
-      <div className="flex gap-4 p-3 shadow-md bg-gray-100/70 rounded-lg w-full h-[20%] items-center">
-        <img
-          src={studentData.img}
-          alt="test"
-          className="h-full aspect-square bg-white shadow-lg rounded-full flex-shrink-0 object-cover"
-        />
-        <div className="flex flex-col gap-3">
-          <h1 className="text-5xl font-medium">
-            {studentData.firstName} {studentData.lastName}
-          </h1>
-          <h2 className="text-3xl">{studentData.role}</h2>
-=======
       {/* PROFILE CARD */}
       <div className="w-full bg-white rounded-2xl shadow-md flex items-center gap-6 px-8 py-6 mx-auto">
         <div className="h-20 w-20 bg-yellow-500 rounded-full shadow-md flex items-center justify-center text-3xl font-semibold text-white">
@@ -47,7 +32,6 @@ return (
             {studentData.lastName?.toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase())}
           </h1>
           <h2 className="text-lg text-gray-600">{studentData.role}</h2>
->>>>>>> Stashed changes
         </div>
       </div>
 
@@ -99,21 +83,11 @@ return (
         </div>
       </div>
 
-<<<<<<< Updated upstream
-      <div className="flex gap-4 p-3 shadow-md bg-gray-100/70 rounded-lg w-full h-[20%]">
-        <div className="flex flex-col gap-3">
-          <h1 className="text-3xl font-medium">
-            Additional Student Information
-          </h1>
-          {/* Add any additional info here */}
-        </div>
-=======
       {/* EXTRA INFORMATION CARD */}
       <div className="w-full bg-white rounded-2xl shadow-md p-6 mx-auto">
         <h1 className="text-2xl font-semibold text-[#4b2e05]">
           Additional Student Information
         </h1>
->>>>>>> Stashed changes
       </div>
 
     </div>

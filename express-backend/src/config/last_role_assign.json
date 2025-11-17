@@ -1,6 +1,6 @@
 {
-  "role": "Guest",
+  "role": "Teaching_Faculty",
   "assign": [
-    "Guest"
+    "BSCS"
   ]
 }
